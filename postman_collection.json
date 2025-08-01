@@ -1,0 +1,404 @@
+{
+	"info": {
+		"_postman_id": "2a8c6ba3-aa64-4e0a-aa81-54f0d5912bd9",
+		"name": "Flex Warranty - SHOPIFY",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "24135439",
+		"_collection_link": "https://universal-moon-708232.postman.co/workspace/Flex-Embedded---Shopify~a533dea5-8ac7-4ef5-bc66-a26713217845/collection/24135439-2a8c6ba3-aa64-4e0a-aa81-54f0d5912bd9?action=share&source=collection_link&creator=24135439"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://flex-warranty-api.fly.dev"
+		},
+		{
+			"key": "shop_domain",
+			"value": "test-store.myshopify.com"
+		},
+		{
+			"key": "shop_id",
+			"value": "1"
+		}
+	],
+	"item": [
+		{
+			"name": "1. Service Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/health",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"health"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "2. Shop Registration",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "X-Shop-Domain",
+						"value": "{{shop_domain}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"shop_url\": \"{{shop_domain}}\",\n  \"access_token\": \"test_access_token_123\",\n  \"product_id\": \"123456789\",\n  \"variant_id\": \"987654321\", \n  \"collection_id\": \"555666777\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/api/shops/register",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"shops",
+						"register"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "3. Dynamic Pricing - Laptop",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "X-Shop-Domain",
+						"value": "{{shop_domain}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"session_token\": \"test_session_123\",\n  \"product_id\": \"123456789\",\n  \"product_price\": 1299.99,\n  \"product_category\": \"Desktops, Laptops\",\n  \"warranty_term\": 2\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/api/pricing",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"pricing"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "4. Dynamic Pricing - TV",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "X-Shop-Domain",
+						"value": "{{shop_domain}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"session_token\": \"test_session_456\",\n  \"product_id\": \"987654321\",\n  \"product_price\": 899.99,\n  \"product_category\": \"TVs\",\n  \"warranty_term\": 3\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/api/pricing",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"pricing"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "5. Dynamic Pricing - Tablet",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "X-Shop-Domain",
+						"value": "{{shop_domain}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"session_token\": \"test_session_789\",\n  \"product_id\": \"555666777\",\n  \"product_price\": 499.99,\n  \"product_category\": \"Tablets\",\n  \"warranty_term\": 2\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/api/pricing",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"pricing"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "6. Dynamic Pricing - Consumer Electronics",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "X-Shop-Domain",
+						"value": "{{shop_domain}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"session_token\": \"test_session_101\",\n  \"product_id\": \"111222333\",\n  \"product_price\": 199.99,\n  \"product_category\": \"Consumer Electronics\",\n  \"warranty_term\": 2\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/api/pricing",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"pricing"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "7. List Offers",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "X-Shop-Domain",
+						"value": "{{shop_domain}}"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/offers?shop_id={{shop_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"offers"
+					],
+					"query": [
+						{
+							"key": "shop_id",
+							"value": "{{shop_id}}"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "8. Create Offer",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "X-Shop-Domain",
+						"value": "{{shop_domain}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"shop_id\": {{shop_id}},\n  \"title\": \"Extended Warranty\",\n  \"description\": \"Protect your purchase with our extended warranty\",\n  \"is_active\": true,\n  \"settings\": {\n    \"headline\": \"Protect Your Investment\",\n    \"subheadline\": \"Extended warranty coverage for peace of mind\",\n    \"cta_text\": \"Add Warranty\",\n    \"theme_id\": 1,\n    \"layout_id\": 1\n  }\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/api/offers",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"offers"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "9. List Themes",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "X-Shop-Domain",
+						"value": "{{shop_domain}}"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/themes?shop_id={{shop_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"themes"
+					],
+					"query": [
+						{
+							"key": "shop_id",
+							"value": "{{shop_id}}"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "10. List Layouts",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "X-Shop-Domain",
+						"value": "{{shop_domain}}"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/layouts?shop_id={{shop_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"layouts"
+					],
+					"query": [
+						{
+							"key": "shop_id",
+							"value": "{{shop_id}}"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "11. Get Warranty Embed Script",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/js/warranty-embed.js",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"js",
+						"warranty-embed.js"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "12. Cleanup Variants",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "X-Shop-Domain",
+						"value": "{{shop_domain}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"shop_id\": {{shop_id}}\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/api/cleanup-variants",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"cleanup-variants"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+} 
