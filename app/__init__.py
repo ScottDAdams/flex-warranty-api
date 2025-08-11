@@ -6,6 +6,7 @@ from .routes.offers import offers_bp
 from .routes.themes import themes_bp
 from .routes.layouts import layouts_bp
 from .routes.shops import shops_bp
+from .routes.images import images_bp
 from .routes.webhooks import webhooks_bp
 from .routes.proxy import proxy_bp
 from .models.database import get_db
@@ -15,21 +16,21 @@ def create_app():
     app = Flask(__name__, static_folder='static', template_folder='templates')
     app.config.from_object(Config)
 
-    # Initialize CORS for the entire application
-    CORS(app,
-         supports_credentials=True,
-         resources={
-             r"/api/*": {
-                 "origins": [
-                     "https://*.myshopify.com",
-                     "https://*.myshopify.io",
-                     "https://*.trycloudflare.com",
-                     "https://*.tail85cd8a.ts.net"
-                 ],
-                 "methods": ["GET", "POST", "OPTIONS", "PATCH", "DELETE"],
-                 "allow_headers": ["Content-Type", "Authorization", "X-Shop-Domain"]
-             },
-         }
+    # Initialize CORS for the entire application (broad dev policy for tunnels)
+    CORS(
+        app,
+        resources={
+            r"/api/*": {
+                "origins": "*",
+                "methods": ["GET", "POST", "OPTIONS", "PATCH", "DELETE"],
+                "allow_headers": [
+                    "Content-Type",
+                    "Authorization",
+                    "X-Shop-Domain",
+                    "X-API-Key",
+                ],
+            }
+        },
     )
 
     @app.route('/static/images/<path:filename>')
@@ -51,6 +52,7 @@ def create_app():
     app.register_blueprint(themes_bp, url_prefix='/api')
     app.register_blueprint(layouts_bp, url_prefix='/api')
     app.register_blueprint(shops_bp, url_prefix='/api/shops')
+    app.register_blueprint(images_bp, url_prefix='/api')
     app.register_blueprint(webhooks_bp, url_prefix='/api/webhooks')
     app.register_blueprint(proxy_bp, url_prefix='/api')
 

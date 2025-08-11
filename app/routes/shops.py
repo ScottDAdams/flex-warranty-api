@@ -135,6 +135,45 @@ def regenerate_api_key():
         return jsonify({'error': 'Failed to regenerate API key'}), 500
 
 
+@shops_bp.route('/me', methods=['GET'])
+@require_auth
+def get_shop_me():
+    """Return normalized state for the current shop.
+
+    Response shape:
+    {
+      shop_url,
+      product_id, variant_id, collection_id,
+      has_product, has_variant, has_collection,
+      registered
+    }
+    """
+    try:
+        shop_context = get_shop_context()
+
+        with get_db() as db:
+            shop = db.query(Shop).filter_by(id=shop_context['shop_id']).first()
+            if not shop:
+                return jsonify({'error': 'Shop not found'}), 404
+
+            resp = {
+                'shop_url': shop.shop_url,
+                'product_id': shop.product_id,
+                'variant_id': shop.variant_id,
+                'collection_id': shop.collection_id,
+                'has_product': bool(shop.product_id),
+                'has_variant': bool(shop.variant_id),
+                'has_collection': bool(shop.collection_id),
+                'registered': bool(shop.api_key),
+            }
+
+            return jsonify(resp), 200
+
+    except Exception as e:
+        logger.error(f"Error getting shop me: {str(e)}")
+        return jsonify({'error': 'Failed to get shop state'}), 500
+
+
 @shops_bp.route('/stats', methods=['GET'])
 @require_auth
 def get_shop_stats():

@@ -10,6 +10,9 @@ def require_auth(f):
     """Decorator to require authentication for API endpoints"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Allow CORS preflight to pass without auth
+        if request.method == 'OPTIONS':
+            return ('', 200)
         # Get shop domain from headers or query params
         shop_domain = request.headers.get('X-Shop-Domain') or request.args.get('shop')
         if not shop_domain:
