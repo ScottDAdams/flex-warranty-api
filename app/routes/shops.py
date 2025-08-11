@@ -109,37 +109,30 @@ def update_shop_settings():
         return jsonify({'error': 'Failed to update shop settings'}), 500
 
 
-@shops_bp.route('/api-token', methods=['POST'])
+@shops_bp.route('/api-key', methods=['POST'])
 @require_auth
-def regenerate_api_token():
-    """Regenerate the API token for the shop"""
+def regenerate_api_key():
+    """Regenerate the API key for the shop (stored in shops.api_key)"""
     try:
         shop_context = get_shop_context()
-        
+
         with get_db() as db:
-            # Generate new API token
+            import secrets
+            api_key = f"fw_{secrets.token_urlsafe(32)}"
+
             db.execute(
-                text('UPDATE shop_settings SET api_token = md5(random()::text), updated_at = now() WHERE shop_id = :shop_id'),
-                {'shop_id': shop_context['shop_id']}
+                text('UPDATE shops SET api_key = :api_key, updated_at = now() WHERE id = :shop_id'),
+                {'api_key': api_key, 'shop_id': shop_context['shop_id']}
             )
-            
-            # Get the new token
-            result = db.execute(
-                text('SELECT api_token FROM shop_settings WHERE shop_id = :shop_id'),
-                {'shop_id': shop_context['shop_id']}
-            ).fetchone()
-            
-            if not result:
-                return jsonify({'error': 'Failed to regenerate API token'}), 500
-            
+
             return jsonify({
-                'message': 'API token regenerated successfully',
-                'api_token': result[0]
+                'message': 'API key regenerated successfully',
+                'api_key': api_key
             }), 200
-            
+
     except Exception as e:
-        logger.error(f"Error regenerating API token: {str(e)}")
-        return jsonify({'error': 'Failed to regenerate API token'}), 500
+        logger.error(f"Error regenerating API key: {str(e)}")
+        return jsonify({'error': 'Failed to regenerate API key'}), 500
 
 
 @shops_bp.route('/stats', methods=['GET'])
@@ -219,7 +212,7 @@ def register_shop():
                 existing_shop.api_key = api_key
                 
                 db.commit()
-                
+
                 return jsonify({
                     'message': 'Shop updated successfully',
                     'shop_id': existing_shop.id,
@@ -242,7 +235,7 @@ def register_shop():
                 db.add(new_shop)
                 db.commit()
                 db.refresh(new_shop)
-                
+
                 return jsonify({
                     'message': 'Shop registered successfully',
                     'shop_id': new_shop.id,

@@ -110,7 +110,7 @@
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Shop-Domain': window.Shopify.shop,
-                    'Authorization': `Bearer ${window.Shopify.theme.api_token || ''}`
+      'X-API-Key': (window.Shopify && window.Shopify.theme && window.Shopify.theme.api_key) || ''
                 },
                 body: JSON.stringify({
                     session_token: sessionToken,

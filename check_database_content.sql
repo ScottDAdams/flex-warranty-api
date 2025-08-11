@@ -52,10 +52,6 @@ SELECT
     shop_id,
     show_offer_on_checkout,
     show_email_optin,
-    CASE 
-        WHEN api_token IS NOT NULL THEN CONCAT(LEFT(api_token, 10), '...')
-        ELSE 'NULL'
-    END as api_token_preview,
     created_at,
     updated_at
 FROM shop_settings

@@ -21,8 +21,8 @@ class Config:
     SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD')
     EMAIL_FROM_ADDRESS = os.environ.get('EMAIL_FROM_ADDRESS')
 
-    # API
-    API_TOKEN = os.getenv('API_TOKEN')
+    # Legacy static API token (unused)
+    # API_TOKEN = os.getenv('API_TOKEN')
 
     # CORS
     CORS_ORIGINS = [

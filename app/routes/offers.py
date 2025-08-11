@@ -247,7 +247,14 @@ def get_dynamic_pricing():
         if not api_key:
             return jsonify({'error': 'Missing API key'}), 401
         
-        data = request.get_json()
+        # Be tolerant of clients missing the JSON content-type
+        try:
+            data = request.get_json(silent=True)
+            if data is None and request.data:
+                import json as _json
+                data = _json.loads(request.data)
+        except Exception:
+            data = {}
         
         session_token = data.get('session_token')
         product_id = data.get('product_id')
