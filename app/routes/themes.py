@@ -99,8 +99,18 @@ def create_theme():
             
             result = db.execute(
                 text('''
-                    INSERT INTO offer_themes (shop_id, name, primary_color, secondary_color, accent_color, is_default)
-                    VALUES (:shop_id, :name, :primary_color, :secondary_color, :accent_color, :is_default)
+                    INSERT INTO offer_themes (
+                        shop_id, name,
+                        primary_color, secondary_color, accent_color,
+                        text_color, background_color, button_color,
+                        chip_bg, chip_text, font_family, hero_image_id, is_default
+                    )
+                    VALUES (
+                        :shop_id, :name,
+                        :primary_color, :secondary_color, :accent_color,
+                        :text_color, :background_color, :button_color,
+                        :chip_bg, :chip_text, :font_family, :hero_image_id, :is_default
+                    )
                     RETURNING id
                 '''),
                 {
@@ -109,6 +119,13 @@ def create_theme():
                     'primary_color': data.get('primary_color'),
                     'secondary_color': data.get('secondary_color'),
                     'accent_color': data.get('accent_color'),
+                    'text_color': data.get('text_color'),
+                    'background_color': data.get('background_color'),
+                    'button_color': data.get('button_color'),
+                    'chip_bg': data.get('chip_bg'),
+                    'chip_text': data.get('chip_text'),
+                    'font_family': data.get('font_family'),
+                    'hero_image_id': data.get('hero_image_id'),
                     'is_default': data.get('is_default', False)
                 }
             )
@@ -169,7 +186,7 @@ def update_theme(theme_id):
             update_fields = []
             params = {'theme_id': theme_id, 'shop_id': shop_context['shop_id']}
             
-            for field in ['name', 'primary_color', 'secondary_color', 'accent_color', 'is_default']:
+            for field in ['name', 'primary_color', 'secondary_color', 'accent_color', 'text_color', 'background_color', 'button_color', 'chip_bg', 'chip_text', 'font_family', 'hero_image_id', 'is_default']:
                 if field in data:
                     update_fields.append(f"{field} = :{field}")
                     params[field] = data[field]

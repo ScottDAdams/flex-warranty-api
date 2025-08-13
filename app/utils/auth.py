@@ -10,9 +10,17 @@ def require_auth(f):
     """Decorator to require authentication for API endpoints"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Allow CORS preflight to pass without auth
+        # Allow CORS preflight to pass without auth and ensure CORS headers are present
         if request.method == 'OPTIONS':
-            return ('', 200)
+            from flask import make_response
+            resp = make_response('', 200)
+            origin = request.headers.get('Origin', '*')
+            resp.headers['Access-Control-Allow-Origin'] = origin
+            resp.headers['Vary'] = 'Origin'
+            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Shop-Domain, X-API-Key'
+            resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PATCH, DELETE'
+            resp.headers['Access-Control-Max-Age'] = '600'
+            return resp
         # Get shop domain from headers or query params
         shop_domain = request.headers.get('X-Shop-Domain') or request.args.get('shop')
         if not shop_domain:

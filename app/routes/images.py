@@ -13,7 +13,7 @@ def _validate_image(image_bytes: bytes):
     return image_type if image_type in ['jpeg', 'png', 'gif'] else None
 
 
-@images_bp.route('/images/<int:image_id>/display', methods=['GET'])
+@images_bp.route('/images/<int:image_id>/display', methods=['GET', 'OPTIONS'])
 def display_image(image_id: int):
     try:
         with get_db() as db:
@@ -83,7 +83,7 @@ def upload_image():
         return jsonify({'success': False, 'error': 'Upload failed'}), 500
 
 
-@images_bp.route('/images/<int:image_id>', methods=['DELETE'])
+@images_bp.route('/images/<int:image_id>', methods=['DELETE', 'OPTIONS'])
 @require_auth
 def delete_image(image_id: int):
     try:
