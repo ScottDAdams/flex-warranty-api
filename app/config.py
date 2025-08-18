@@ -13,6 +13,7 @@ class Config:
     SHOPIFY_WEBHOOK_SECRET = os.environ.get('SHOPIFY_WEBHOOK_SECRET')
     SHOPIFY_APP_URL = os.getenv('SHOPIFY_APP_URL', 'https://your-default-url.com')
     SHOPIFY_API_SECRET = os.environ.get('SHOPIFY_API_SECRET')
+    APP_PROXY_PREFIX = os.environ.get('APP_PROXY_PREFIX', '/apps/flex-protect')
 
     # Email settings
     SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')

@@ -170,7 +170,7 @@ def order_created():
             return jsonify({'error': 'Invalid signature'}), 401
         
         data = request.get_json()
-        shop_domain = data.get('shop_domain')
+        shop_domain = data.get('shop_domain') or data.get('domain')
         order_id = data.get('id')
         
         if not shop_domain or not order_id:
@@ -181,6 +181,29 @@ def order_created():
         # 2. Send warranty offers via email
         # 3. Track order data for analytics
         
+        # Attempt to attribute: if any line item is our protection variant, parse session token from title suffix
+        try:
+            items = data.get('line_items', []) or []
+            session_hint = None
+            for it in items:
+                title = (it.get('title') or '')
+                # Our variant naming scheme: "Protection - <tokenprefix> - <term>yr"
+                if title.startswith('Protection - '):
+                    parts = title.split(' - ')
+                    if len(parts) >= 3:
+                        session_hint = parts[1]
+                        break
+            with get_db() as db:
+                shop = db.execute(text('SELECT id FROM shops WHERE shop_url = :s'), { 's': shop_domain }).mappings().first()
+                if shop:
+                    db.execute(text('''
+                        insert into offer_events (shop_id, event_type, session_id, order_id, metadata)
+                        values (:sid, :etype, :sess, :oid, :meta::jsonb)
+                    '''), { 'sid': shop['id'], 'etype': 'purchase', 'sess': session_hint or 'unknown', 'oid': str(order_id), 'meta': json.dumps({ 'total_price': data.get('total_price'), 'currency': data.get('currency'), 'line_items': [ { 'product_id': li.get('product_id'), 'variant_id': li.get('variant_id'), 'title': li.get('title'), 'quantity': li.get('quantity'), 'price': li.get('price') } for li in items ] }) })
+                    db.commit()
+        except Exception as e:
+            logger.error(f"order attribution failed: {e}")
+
         logger.info(f"Order created: {order_id} for shop: {shop_domain}")
         return jsonify({'message': 'Order processed successfully'}), 200
         

@@ -258,8 +258,13 @@ def get_dynamic_pricing():
         
         session_token = data.get('session_token')
         product_id = data.get('product_id')
-        product_price = data.get('product_price', 0)
-        product_category = data.get('product_category', 'Consumer Electronics')  # Default category
+        product_price = float(data.get('product_price', 0) or 0)
+
+        # Accept multiple ways to specify category for backwards compatibility
+        product_category = data.get('product_category')  # Name string, legacy
+        category_tag = data.get('category_tag') or data.get('product_category_tag')  # e.g., flexprotect_cat4
+        category_id = data.get('category_id')
+        resolved_category_name = None
         shop_domain = request.headers.get('X-Shop-Domain')
         
         if not session_token or not product_id:
@@ -275,8 +280,31 @@ def get_dynamic_pricing():
             if not shop.api_key or shop.api_key != api_key:
                 return jsonify({'error': 'Invalid API key'}), 401
 
+        # Resolve category from tag/id if provided
+        with get_db() as db:
+            if (not product_category) and (category_tag or category_id is not None):
+                try:
+                    cid = None
+                    if isinstance(category_id, int):
+                        cid = category_id
+                    elif isinstance(category_id, str) and category_id.isdigit():
+                        cid = int(category_id)
+                    elif isinstance(category_tag, str):
+                        import re
+                        m = re.match(r"^flexprotect_cat(\d+)$", category_tag.strip())
+                        if m:
+                            cid = int(m.group(1))
+                    if cid is not None:
+                        row = db.execute(text('SELECT id, product_category FROM warranty_insurance_products WHERE id = :id AND is_active = true'), { 'id': cid }).mappings().first()
+                        if row:
+                            resolved_category_name = row['product_category']
+                except Exception:
+                    resolved_category_name = None
+
+        product_category_name = product_category or resolved_category_name or 'Consumer Electronics'
+
         # Get all warranty pricing options from AIG pricing bands
-        pricing_options = get_all_warranty_pricing_options(product_price, product_category)
+        pricing_options = get_all_warranty_pricing_options(product_price, product_category_name)
         
         if not pricing_options:
             return jsonify({'error': 'No pricing found for this product'}), 404
@@ -284,7 +312,9 @@ def get_dynamic_pricing():
         return jsonify({
             'session_token': session_token,
             'variant_id': shop.variant_id,
-            'product_category': product_category,
+            'product_category': product_category_name,
+            'category_tag': category_tag,
+            'category_id': int(category_id) if (isinstance(category_id, (int,str)) and str(category_id).isdigit()) else None,
             'includes_adh': pricing_options['includes_adh'],
             'pricing_options': pricing_options['options']
         }), 200

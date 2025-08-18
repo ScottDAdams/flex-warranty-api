@@ -145,3 +145,17 @@ CREATE POLICY "Allow all operations on shop_settings" ON shop_settings FOR ALL U
 CREATE POLICY "Allow all operations on offers" ON offers FOR ALL USING (true);
 CREATE POLICY "Allow all operations on offer_themes" ON offer_themes FOR ALL USING (true);
 CREATE POLICY "Allow all operations on offer_layouts" ON offer_layouts FOR ALL USING (true); 
+
+-- Analytics tables
+CREATE TABLE IF NOT EXISTS offer_events (
+    id BIGSERIAL PRIMARY KEY,
+    shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    event_type VARCHAR(64) NOT NULL,
+    session_token VARCHAR(128),
+    payload JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_offer_events_shop_id ON offer_events(shop_id);
+CREATE INDEX IF NOT EXISTS idx_offer_events_type ON offer_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_offer_events_session ON offer_events(session_token);

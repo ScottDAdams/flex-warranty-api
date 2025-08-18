@@ -12,6 +12,7 @@ from .routes.products import products_bp
 from .routes.prompts import prompts_bp
 from .routes.templates import templates_bp
 from .routes.configs import configs_bp
+from .routes.analytics import analytics_bp
 from .routes.proxy import proxy_bp
 from .models.database import get_db
 from sqlalchemy import text
@@ -26,7 +27,7 @@ def create_app():
         resources={
             r"/api/*": {
                 "origins": "*",
-                "methods": ["GET", "POST", "OPTIONS", "PATCH", "DELETE"],
+                "methods": ["GET", "POST", "OPTIONS", "PATCH", "PUT", "DELETE"],
                 "allow_headers": [
                     "Content-Type",
                     "Authorization",
@@ -50,7 +51,7 @@ def create_app():
             resp.headers['Access-Control-Allow-Origin'] = origin if origin else '*'
             resp.headers['Vary'] = 'Origin'
             resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Shop-Domain, X-API-Key'
-            resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PATCH, DELETE'
+            resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PATCH, PUT, DELETE'
         return resp
 
     @app.route('/static/images/<path:filename>')
@@ -79,6 +80,7 @@ def create_app():
     app.register_blueprint(prompts_bp, url_prefix='/api')
     app.register_blueprint(templates_bp, url_prefix='/api')
     app.register_blueprint(configs_bp, url_prefix='/api')
+    app.register_blueprint(analytics_bp, url_prefix='/api')
 
     @app.route('/health')
     def health_check():
