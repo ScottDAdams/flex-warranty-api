@@ -350,23 +350,56 @@ def pricing_select():
 @proxy_bp.route('/pricing/config', methods=['GET'])
 @require_app_proxy_auth
 def pricing_config():
-    """Return enabled offer placements for the shop (effective by type)."""
+    """Return enriched embed config for the shop with fallbacks.
+
+    Payload shape:
+      {
+        enabled: { product_page, offer_modal, cart, learn_more },
+        templates: { [type]: { ...template_json, css_overrides?, _meta: { id, name, updated_at } } },
+        layout: 'compact' | 'standard',
+        theme: { textColor, backgroundColor, buttonColor, chipColor, chipTextColor, fontFamily, ... },
+        i18n: { currency, locale }
+      }
+    """
     try:
         shop_domain = request.args.get('shop')
         if not shop_domain:
             return jsonify({'error': 'Missing shop'}), 400
         theme = None
+        templates = {}
+        enabled_by_type = {}
         with get_db() as db:
             shop = db.execute(text('SELECT id FROM shops WHERE shop_url = :s'), { 's': shop_domain }).mappings().first()
             if not shop:
                 return jsonify({'error': 'Shop not found'}), 404
             sid = shop['id']
-            # Prefer shop-specific templates/configs but fall back to global (shop_id=0)
-            rows = db.execute(text('''
+            # Effective templates: prefer shop rows then global; pick most recent per type
+            tmpl_rows = db.execute(text('''
+                with ranked as (
+                  select t.*,
+                         row_number() over (
+                           partition by t.type
+                           order by (t.shop_id = :sid) desc, t.updated_at desc, t.id desc
+                         ) rn
+                  from offer_templates t
+                  where t.is_active = true and t.shop_id in (0, :sid)
+                )
+                select id, shop_id, type, name, description, template_json, css_overrides, updated_at
+                from ranked where rn = 1
+            '''), { 'sid': sid }).mappings().all()
+
+            # Enabled flags from configs if present
+            enabled_rows = db.execute(text('''
                 with effective_templates as (
-                    select distinct on (type) id, type from offer_templates
-                    where is_active = true and (shop_id = :sid or shop_id = 0)
-                    order by type, case when shop_id = :sid then 0 else 1 end
+                  select id, type from (
+                    select t.*,
+                           row_number() over (
+                             partition by t.type
+                             order by (t.shop_id = :sid) desc, t.updated_at desc, t.id desc
+                           ) rn
+                    from offer_templates t
+                    where t.is_active = true and t.shop_id in (0, :sid)
+                  ) z where rn = 1
                 )
                 select et.type, coalesce(oc.enabled, true) as enabled
                 from effective_templates et
@@ -389,11 +422,39 @@ def pricing_config():
                     'chipTextColor': th.get('chip_text'),
                     'fontFamily': th.get('font_family'),
                 }
-        enabled_by_type = { r['type']: bool(r['enabled']) for r in rows }
+        # Build enabled map
+        enabled_by_type = { r['type']: bool(r['enabled']) for r in enabled_rows }
         # Default off if no rows
         for t in ['offer_modal','product_page','cart','learn_more']:
             enabled_by_type.setdefault(t, False)
-        return jsonify({ 'enabled': enabled_by_type, 'theme': theme })
+
+        # Build templates map
+        for r in tmpl_rows:
+            try:
+                base = r.get('template_json')
+                if isinstance(base, str):
+                    base = json.loads(base)
+            except Exception:
+                base = {}
+            if not isinstance(base, dict) or base is None:
+                base = {}
+            if r.get('css_overrides'):
+                base['css_overrides'] = r['css_overrides']
+            base['_meta'] = {
+                'id': r['id'],
+                'name': r.get('name'),
+                'updated_at': r.get('updated_at').isoformat() if r.get('updated_at') else None,
+            }
+            templates[r['type']] = base
+
+        payload = {
+            'enabled': enabled_by_type,
+            'templates': templates,
+            'layout': 'compact',
+            'theme': theme,
+            'i18n': { 'currency': 'USD', 'locale': 'en-US' },
+        }
+        return jsonify(payload)
     except Exception as e:
         current_app.logger.error(f"pricing_config error: {e}")
         return jsonify({'error': 'Internal server error'}), 500

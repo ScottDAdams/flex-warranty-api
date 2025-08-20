@@ -45,12 +45,35 @@
       if (t) { window.__FP_STOREFRONT_TOKEN = t; }
     } catch {}
     const PROXY_BASE = getProxyBase();
+    try { const me = getSelfScript(); fpLog('embed loaded', { src: me ? me.src : null, PROXY_BASE, shop: (window.Shopify && window.Shopify.shop) || null }); } catch {}
     const MAX_SNIPPET = 300;
     function fpLog(...args){
-        try { console.debug('[FlexProtect]', ...args); } catch {}
+        try { console.log('[FlexProtect]', ...args); } catch {}
     }
 
     // Storefront GraphQL helpers removed for stability; we rely solely on theme AJAX cart endpoints
+
+    // i18n defaults; server can override via /pricing/config
+    let __FP_I18N = { currency: 'USD', locale: 'en-US' };
+    function formatMoney(amount, currency, locale) {
+        const n = Number(amount || 0);
+        try {
+            return new Intl.NumberFormat(locale || __FP_I18N.locale, { style: 'currency', currency: currency || __FP_I18N.currency }).format(n);
+        } catch {
+            return `$${n.toFixed(2)}`;
+        }
+    }
+    function safeTheme(theme) {
+        const t = Object.assign({
+            textColor: '#1e293b',
+            backgroundColor: '#f8fafc',
+            buttonColor: '#2563eb',
+            chipColor: '#222222',
+            chipTextColor: '#ffffff',
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+        }, theme || {});
+        return t;
+    }
 
     function sleep(ms){ return new Promise(r=> setTimeout(r, ms)); }
     function debounce(fn, wait){ let t; return (...args)=>{ clearTimeout(t); t = setTimeout(()=> fn(...args), wait); }; }
@@ -148,22 +171,23 @@
     }
     
     // Create warranty offer HTML
-    function createWarrantyOffer(productInfo, pricingData, theme) {
+    function createWarrantyOffer(productInfo, pricingData, theme, template, showLearnMore) {
         const includesAdh = !!pricingData.includes_adh;
         const options = Array.isArray(pricingData.options) ? pricingData.options : [];
+        const tStrings = (template && template.strings) || {};
         const productCategory = productInfo.category_name || 'Device';
         const two = options.find(o=> Number(o.term) === 2);
         const three = options.find(o=> Number(o.term) === 3);
-        const colors = Object.assign({
-          textColor: '#1e293b',
-          backgroundColor: '#f8fafc',
-          buttonColor: '#2563eb',
-          chipColor: '#222222',
-          chipTextColor: '#ffffff',
-          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-        }, theme || {});
-        
-        const adhText = includesAdh ? ' (includes accidental damage)' : '';
+        const colors = safeTheme(theme);
+        const headline = tStrings.headline || `Protect Your ${productCategory}`;
+        const subhead = tStrings.subhead || `Extended warranty coverage${includesAdh ? ' (includes accidental damage)' : ''}`;
+        const declineLabel = tStrings.decline || "I don't want protection";
+        const learnMoreLabel = tStrings.learn_more || 'Learn more';
+        const includeLearn = !!showLearnMore;
+        const bullets = Array.isArray(tStrings.bullets) && tStrings.bullets.length ? tStrings.bullets : [
+          'Extended failure protection', 'Hassle-free replacement', '24/7 support', ...(includesAdh ? ['Accidental damage coverage'] : [])
+        ];
+        const heroUrl = (template && (template.heroUrl || (template.images && template.images.hero))) || null;
         
         return `
             <div class="flex-warranty-offer" style="
@@ -177,46 +201,67 @@
                 position: relative;
                 z-index: 2;
             ">
-                <div style="display: flex; align-items: center; margin-bottom: 15px;">
-                    <div style="
-                        background: ${colors.buttonColor};
-                        color: ${colors.chipTextColor};
-                        border-radius: 50%;
-                        width: 40px;
-                        height: 40px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        margin-right: 15px;
-                        font-weight: bold;
-                    ">🛡️</div>
-                    <div>
-                        <h3 style="margin: 0; color: #1e293b; font-size: 18px; font-weight: 600;">
-                            Protect Your ${productCategory}
-                        </h3>
-                        <p style="margin: 5px 0 0 0; color: #64748b; font-size: 14px;">Extended warranty coverage${adhText}</p>
+                <div style="display:flex; gap:16px; align-items:center; margin-bottom:15px;">
+                  <div style="flex:1; min-width:0;">
+                    <h3 style="margin:0; color:#1e293b; font-size:18px; font-weight:600;">${headline}</h3>
+                    <p style="margin:5px 0 0 0; color:#64748b; font-size:14px;">${subhead}</p>
                     </div>
+                  ${heroUrl ? `<img src="${heroUrl}" alt="Protection" style="width:120px; height:auto; border-radius:6px; object-fit:cover;">` : ''}
                 </div>
                 
                 <div style="margin-bottom: 15px;">
-                    <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 14px;">
-                        <li>Extended failure protection</li>
-                        <li>Hassle-free replacement</li>
-                        <li>24/7 support</li>
-                        <li>Peace of mind</li>
-                        ${includesAdh ? '<li>Accidental damage coverage</li>' : ''}
+                    <ul style="margin:0; padding-left:20px; color:#475569; font-size:14px;">
+                      ${bullets.map(b => `<li>${b}</li>`).join('')}
                     </ul>
                 </div>
                 
                 <div style="display:flex; gap:8px;">
-                  ${two ? `<button type="button" class="fp-option" data-fp-term="2" data-fp-price="${Number(two.price).toFixed(2)}" style="flex:1; background:${colors.chipColor}; color:${colors.chipTextColor}; border:1px solid ${colors.buttonColor}; padding:12px; border-radius:6px; cursor:pointer; pointer-events:auto;">2 Year: $${Number(two.price).toFixed(2)}</button>`: ''}
-                  ${three ? `<button type="button" class="fp-option" data-fp-term="3" data-fp-price="${Number(three.price).toFixed(2)}" style="flex:1; background:${colors.chipColor}; color:${colors.chipTextColor}; border:1px solid ${colors.buttonColor}; padding:12px; border-radius:6px; cursor:pointer; pointer-events:auto;">3 Year: $${Number(three.price).toFixed(2)}</button>`: ''}
+                  ${two ? `<button type="button" class="fp-option" data-fp-term="2" data-fp-price="${Number(two.price).toFixed(2)}" style="flex:1; background:${colors.chipColor}; color:${colors.chipTextColor}; border:1px solid ${colors.buttonColor}; padding:12px; border-radius:6px; cursor:pointer; pointer-events:auto;">2 Year: ${formatMoney(Number(two.price), __FP_I18N.currency, __FP_I18N.locale)}</button>`: ''}
+                  ${three ? `<button type="button" class="fp-option" data-fp-term="3" data-fp-price="${Number(three.price).toFixed(2)}" style="flex:1; background:${colors.chipColor}; color:${colors.chipTextColor}; border:1px solid ${colors.buttonColor}; padding:12px; border-radius:6px; cursor:pointer; pointer-events:auto;">3 Year: ${formatMoney(Number(three.price), __FP_I18N.currency, __FP_I18N.locale)}</button>`: ''}
                 </div>
-                <div style="margin-top:8px; text-align:right;">
-                  <button type="button" data-fp-decline class="fp-link" style="background:none; border:none; color:#64748b; cursor:pointer; pointer-events:auto;">I don't want protection</button>
+                <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+                  ${includeLearn ? `<button type="button" data-fp-learn class="fp-link" style="background:none; border:none; color:#64748b; cursor:pointer; pointer-events:auto;">${learnMoreLabel}</button>` : '<span></span>'}
+                  <button type="button" data-fp-decline class="fp-link" style="background:none; border:none; color:#64748b; cursor:pointer; pointer-events:auto;">${declineLabel}</button>
                 </div>
             </div>
         `;
+    }
+    
+    function createLearnMoreContent(template, theme) {
+        const colors = safeTheme(theme);
+        const tStrings = (template && template.strings) || {};
+        const headline = tStrings.headline || 'Learn more about protection';
+        const subhead = tStrings.subhead || '';
+        const bullets = Array.isArray(tStrings.bullets) && tStrings.bullets.length ? tStrings.bullets : [
+          'What is covered', 'How claims work', 'Exclusions'
+        ];
+        const heroUrl = (template && (template.heroUrl || (template.images && template.images.hero))) || null;
+        return `
+          <div class="flex-warranty-learn" style="padding:16px; color:${colors.textColor}; font-family:${colors.fontFamily};">
+            <div style="display:flex; gap:16px; align-items:center; margin-bottom:12px;">
+              <div style="flex:1; min-width:0;">
+                <h3 id="fp-learn-title" style="margin:0; font-size:18px; font-weight:600;">${headline}</h3>
+                ${subhead ? `<p style=\"margin:6px 0 0; color:#64748b;\">${subhead}</p>` : ''}
+              </div>
+              ${heroUrl ? `<img src="${heroUrl}" alt="Learn more" style="width:120px; height:auto; border-radius:6px; object-fit:cover;">` : ''}
+            </div>
+            <ul style="margin:0; padding-left:20px; color:#475569;">
+              ${bullets.map(b => `<li>${b}</li>`).join('')}
+            </ul>
+          </div>
+        `;
+    }
+
+    function showModal(innerHtml, titleId) {
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
+        modal.innerHTML = `<div role="dialog" aria-modal="true" ${titleId ? `aria-labelledby="${titleId}"` : ''} tabindex="-1" style="max-width:640px;width:92%;background:#fff;border-radius:8px;padding:12px;outline:none;">${innerHtml}<div style=\"text-align:right;margin-top:8px;\"><button type=\"button\" data-fp-close class=\"fp-link\" style=\"background:none;border:none;color:#64748b;cursor:pointer;\">Close</button></div></div>`;
+        document.body.appendChild(modal);
+        const close = () => { try { modal.remove(); } catch {} };
+        modal.addEventListener('click', (e)=>{ if (e.target === modal) close(); });
+        const btn = modal.querySelector('[data-fp-close]'); if (btn) btn.addEventListener('click', close);
+        try { const pane = modal.querySelector('[role="dialog"]'); if (pane) { pane.focus(); pane.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') close(); }); } } catch {}
+        return modal;
     }
     // ensureCartId removed – not used with /cart/add.js flow
 
@@ -355,7 +400,7 @@
             });
         } catch {}
 
-        // 3) Intercept XHR to catch themes that use XMLHttpRequest for /cart/change or /cart/update
+        // 3) Intercept XHR to catch themes that use XMLHttpRequest for /cart/add, /cart/change or /cart/update
         try {
             if (!window.__FP_XHR_HOOKED) {
                 window.__FP_XHR_HOOKED = true;
@@ -372,6 +417,51 @@
                             try {
                                 const path = new URL(url, location.origin).pathname;
                                 if (/\/cart\/(change|update)(\.|$)/.test(path)) setTimeout(debouncedCleanup, 150);
+                                if (/\/cart\/add(\.|$)/.test(path) && this.status >= 200 && this.status < 300) {
+                                  // If no plan selected and not declined, show Offer Modal after successful XHR add
+                                  if (placements.offer_modal && !localStorage.getItem(declinedKey) && !(selected && selectedPlan)) {
+                                    try {
+                                      const render = async () => {
+                                        const pricingData2 = await getWarrantyPricing(productInfo, sessionToken);
+                                        if (!pricingData2) return;
+                                        const html = createWarrantyOffer(productInfo, pricingData2, theme, templates['offer_modal']);
+                                        const modal = document.createElement('div');
+                                        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
+                                        modal.innerHTML = `<div style=\"max-width:520px;width:90%;background:#fff;border-radius:8px;padding:12px;\">${html}</div>`;
+                                        document.body.appendChild(modal);
+                                        const mcontainer = modal.querySelector('.flex-warranty-offer');
+                                        trackEvent('offer_view', { surface: 'offer_modal', price: productInfo.price, category_tag: productInfo.category_tag });
+                                        mcontainer.addEventListener('click', async (ev) => {
+                                          const tbtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-term]') : null;
+                                          if (tbtn && mcontainer.contains(tbtn)) {
+                                            const term = Number(tbtn.getAttribute('data-fp-term'));
+                                            const priceSel = Number(tbtn.getAttribute('data-fp-price'));
+                                            trackEvent('offer_select', { surface: 'offer_modal', term, price: priceSel });
+                                            let currentVar = null;
+                                            try { currentVar = document.querySelector('[data-product-form] form [name=\"id\"], form[action*=\"/cart/add\"] [name=\"id\"], form[action=\"/cart/add\"] [name=\"id\"]').value || null; } catch {}
+                                            const parentGidForAdd = currentVar ? `gid://shopify/ProductVariant/${Number(currentVar)}` : parentVariantGid;
+                                            await selectAndAddToCart(sessionToken, priceSel, term, pj.id, parentGidForAdd, (pricingData2 && pricingData2.session_hint) || '');
+                                            modal.remove();
+                                            return;
+                                          }
+                                          const dbtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-decline]') : null;
+                                          if (dbtn && mcontainer.contains(dbtn)) {
+                                            trackEvent('offer_decline', { surface: 'offer_modal' });
+                                            localStorage.setItem(declinedKey, '1');
+                                            modal.remove();
+                                            return;
+                                          }
+                                          const lbtn = ev.target && ev.target.closest ? ev.target.closest('[data-fp-learn]') : null;
+                                          if (lbtn && mcontainer.contains(lbtn)) {
+                                            const lmHtml = createLearnMoreContent(templates['learn_more'], theme);
+                                            showModal(lmHtml, 'fp-learn-title');
+                                          }
+                                        });
+                                      };
+                                      setTimeout(render, 50);
+                                    } catch {}
+                                  }
+                                }
                             } catch {}
                         };
                         this.addEventListener('load', done);
@@ -436,6 +526,8 @@
         // Fetch placement config via proxy; if product_page disabled, we’ll later bind modal/cart handlers
         let placements = { product_page: true, offer_modal: false, cart: false };
         let theme = null;
+        let templates = {};
+        let layout = 'compact';
         // Per-product decline key will be computed once product handle/id is known
         let declinedKey = null;
         try {
@@ -447,7 +539,10 @@
                 const j = await res.json();
                 placements = Object.assign(placements, j.enabled || {});
                 theme = j.theme || null;
-                fpLog('config ok', placements, theme);
+                templates = j.templates || {};
+                layout = j.layout || 'compact';
+                if (j.i18n) { __FP_I18N = Object.assign(__FP_I18N, j.i18n || {}); }
+                fpLog('config ok', placements, layout, __FP_I18N, theme, Object.keys(templates));
             } else {
                 const txt = await res.clone().text().catch(()=> '');
                 fpLog('config fail', res.status, txt.slice(0, MAX_SNIPPET));
@@ -473,10 +568,10 @@
         if (!isProductEligible(productInfo)) return;
         const sessionToken = getSessionToken();
 
-        if (placements.product_page) {
+        if (placements.product_page === true) {
             const pricingData = await getWarrantyPricing(productInfo, sessionToken);
             if (!pricingData) return;
-            const offerHTML = createWarrantyOffer(productInfo, pricingData, theme);
+            const offerHTML = createWarrantyOffer(productInfo, pricingData, theme, templates['product_page'], placements.learn_more === true);
             const insertTarget = document.querySelector('.product-form') || document.querySelector('[data-product-form]') || document.querySelector('.product__info') || document.querySelector('.product-single__info');
             let container = null;
             if (insertTarget) { insertTarget.insertAdjacentHTML('beforebegin', offerHTML); container = insertTarget.previousElementSibling; }
@@ -503,9 +598,15 @@
                   if (declineBtn && container.contains(declineBtn)) {
                     trackEvent('offer_decline', { surface: 'product_page' });
                     localStorage.setItem(declinedKey, '1');
-                    container.style.display='none';
-            return;
-        }
+                    // Keep the inline offer visible so merchant can change their mind; no modal will show due to declined flag
+                    return;
+                  }
+                  const learnBtnPg = ev.target && ev.target.closest ? ev.target.closest('[data-fp-learn]') : null;
+                  if (learnBtnPg && container.contains(learnBtnPg)) {
+                    const lmHtml = createLearnMoreContent(templates['learn_more'], theme);
+                    showModal(lmHtml, 'fp-learn-title');
+                    return;
+                  }
                 });
 
                 // Intercept add-to-cart: if a plan is selected, add via /cart/add.js; otherwise, optionally show modal
@@ -524,11 +625,12 @@
                         window.__FP_ADD_BOTH = false;
                         return;
                       }
-                      if (placements.offer_modal && !localStorage.getItem(declinedKey)) {
+                      // Only show modal if no plan is selected and not declined
+                      if (placements.offer_modal && !localStorage.getItem(declinedKey) && !(selected && selectedPlan)) {
                         e.preventDefault();
                         const pricingData2 = pricingData || await getWarrantyPricing(productInfo, sessionToken);
                         if (!pricingData2) { form.submit(); return; }
-                        const html = createWarrantyOffer(productInfo, pricingData2, theme);
+                        const html = createWarrantyOffer(productInfo, pricingData2, theme, templates['offer_modal'], placements.learn_more === true);
                         const modal = document.createElement('div');
                         modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
                         modal.innerHTML = `<div style=\"max-width:520px;width:90%;background:#fff;border-radius:8px;padding:12px;\">${html}</div>`;
@@ -554,8 +656,8 @@
                             localStorage.setItem(declinedKey, '1');
                             modal.remove();
                             form.submit();
-                            return;
-                          }
+            return;
+        }
                         });
                       }
                     } catch { form.submit(); }
@@ -565,6 +667,76 @@
                   try {
                     const submitBtn = form.querySelector('button[type="submit"], [type="submit"]');
                     if (submitBtn) submitBtn.addEventListener('click', (e)=> { handleAdd(e); }, true);
+                  } catch {}
+
+                  // Defensive: capture generic clicks that end up submitting the same product form
+                  try {
+                    document.addEventListener('click', (e) => {
+                      try {
+                        const btn = e.target && e.target.closest ? e.target.closest('button[name="add"], button[type="submit"], [type="submit"], .product-form__submit, [data-add-to-cart]') : null;
+                        if (!btn) return;
+                        const within = btn.closest('form[action*="/cart/add"], form[action="/cart/add"], [data-product-form] form');
+                        if (within && within === form) {
+                          if (placements.offer_modal && !localStorage.getItem(declinedKey) && !(selected && selectedPlan)) {
+                            try { e.preventDefault(); e.stopPropagation(); if (e.stopImmediatePropagation) e.stopImmediatePropagation(); } catch {}
+                          }
+                          handleAdd(e);
+                        }
+                      } catch {}
+                    }, true);
+                  } catch {}
+
+                  // Defensive: patch form.submit to intercept programmatic submits
+                  try {
+                    if (!window.__FP_FORM_SUBMIT_PATCHED) {
+                      window.__FP_FORM_SUBMIT_PATCHED = true;
+                      const origSubmit = HTMLFormElement.prototype.submit;
+                      HTMLFormElement.prototype.submit = function() {
+                        try {
+                          const isTarget = (this === form) || this.matches('form[action*="/cart/add"], form[action="/cart/add"], [data-product-form] form');
+                          if (isTarget && placements.offer_modal && !localStorage.getItem(declinedKey) && !(selected && selectedPlan)) {
+                            if (pricingData) {
+                              const html = createWarrantyOffer(productInfo, pricingData, theme, templates['offer_modal']);
+                              const modal = document.createElement('div');
+                              modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
+                              modal.innerHTML = `<div style=\"max-width:520px;width:90%;background:#fff;border-radius:8px;padding:12px;\">${html}</div>`;
+                              document.body.appendChild(modal);
+                              const mcontainer = modal.querySelector('.flex-warranty-offer');
+                              trackEvent('offer_view', { surface: 'offer_modal', price: productInfo.price, category_tag: productInfo.category_tag });
+                              mcontainer.addEventListener('click', async (ev) => {
+                                const tbtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-term]') : null;
+                                if (tbtn && mcontainer.contains(tbtn)) {
+                                  const term = Number(tbtn.getAttribute('data-fp-term'));
+                                  const priceSel = Number(tbtn.getAttribute('data-fp-price'));
+                                  trackEvent('offer_select', { surface: 'offer_modal', term, price: priceSel });
+                                  let currentVar2 = null;
+                                  try { currentVar2 = form.querySelector('[name="id"]')?.value || null; } catch {}
+                                  const parentGidForAdd2 = currentVar2 ? `gid://shopify/ProductVariant/${Number(currentVar2)}` : parentVariantGid;
+                                  await selectAndAddToCart(sessionToken, priceSel, term, pj.id, parentGidForAdd2, sessionHint);
+                                  modal.remove();
+                                  return;
+                                }
+                                const dbtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-decline]') : null;
+                                if (dbtn && mcontainer.contains(dbtn)) {
+                                  trackEvent('offer_decline', { surface: 'offer_modal' });
+                                  localStorage.setItem(declinedKey, '1');
+                                  modal.remove();
+                                  try { origSubmit.call(form); } catch {}
+                                  return;
+                                }
+                                const lbtn = ev.target && ev.target.closest ? ev.target.closest('[data-fp-learn]') : null;
+                                if (lbtn && mcontainer.contains(lbtn)) {
+                                  const lmHtml = createLearnMoreContent(templates['learn_more'], theme);
+                                  showModal(lmHtml, 'fp-learn-title');
+                                }
+                              });
+                              return; // prevent native submit
+                            }
+                          }
+                        } catch {}
+                        return origSubmit.apply(this, arguments);
+                      };
+                    }
                   } catch {}
                 }
 
@@ -587,6 +759,7 @@
                               // We already executed combined add; ignore theme add echo
                               return resp;
                             }
+                            // Case A: a plan was selected inline -> add warranty automatically
                             if (selected && selectedPlan && !localStorage.getItem(declinedKey) && !window.__FP_WARRANTY_ADDED) {
                               window.__FP_WARRANTY_ADDED = true;
                               let currentVar3 = null;
@@ -594,6 +767,43 @@
                               const parentGidForAdd3 = currentVar3 ? `gid://shopify/ProductVariant/${Number(currentVar3)}` : parentVariantGid;
                               window.__FP_ADD_BOTH = false; // native add already added the product; only add warranty
                               await selectAndAddToCart(sessionToken, selectedPlan.price, selectedPlan.term, pj.id, parentGidForAdd3, sessionHint);
+                            } else if (placements.offer_modal && !localStorage.getItem(declinedKey) && !(selected && selectedPlan)) {
+                              // Case B: no plan selected and not declined -> prompt with Offer Modal post-add
+                              try {
+                                const html = createWarrantyOffer(productInfo, pricingData || (await getWarrantyPricing(productInfo, sessionToken)), theme, templates['offer_modal']);
+                                const modal = document.createElement('div');
+                                modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
+                                modal.innerHTML = `<div style=\"max-width:520px;width:90%;background:#fff;border-radius:8px;padding:12px;\">${html}</div>`;
+                                document.body.appendChild(modal);
+                                const mcontainer = modal.querySelector('.flex-warranty-offer');
+                                trackEvent('offer_view', { surface: 'offer_modal', price: productInfo.price, category_tag: productInfo.category_tag });
+                                mcontainer.addEventListener('click', async (ev) => {
+                                  const tbtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-term]') : null;
+                                  if (tbtn && mcontainer.contains(tbtn)) {
+                                    const term = Number(tbtn.getAttribute('data-fp-term'));
+                                    const priceSel = Number(tbtn.getAttribute('data-fp-price'));
+                                    trackEvent('offer_select', { surface: 'offer_modal', term, price: priceSel });
+                                    let currentVar4 = null;
+                                    try { currentVar4 = document.querySelector('[data-product-form] form [name="id"], form[action*="/cart/add"] [name="id"], form[action="/cart/add"] [name="id"]').value || null; } catch {}
+                                    const parentGidForAdd4 = currentVar4 ? `gid://shopify/ProductVariant/${Number(currentVar4)}` : parentVariantGid;
+                                    await selectAndAddToCart(sessionToken, priceSel, term, pj.id, parentGidForAdd4, sessionHint);
+                                    modal.remove();
+                                    return;
+                                  }
+                                  const dbtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-decline]') : null;
+                                  if (dbtn && mcontainer.contains(dbtn)) {
+                                    trackEvent('offer_decline', { surface: 'offer_modal' });
+                                    localStorage.setItem(declinedKey, '1');
+                                    modal.remove();
+                                    return;
+                                  }
+                                  const lbtn = ev.target && ev.target.closest ? ev.target.closest('[data-fp-learn]') : null;
+                                  if (lbtn && mcontainer.contains(lbtn)) {
+                                    const lmHtml = createLearnMoreContent(templates['learn_more'], theme);
+                                    showModal(lmHtml, 'fp-learn-title');
+                                  }
+                                });
+                              } catch {}
                             }
                           }
                           // When cart changes, remove orphan warranties whose parent is gone
@@ -623,7 +833,7 @@
                   }
                 } catch {}
             }
-        } else if (placements.offer_modal && !localStorage.getItem(declinedKey)) {
+        } else if (placements.offer_modal === true && !localStorage.getItem(declinedKey)) {
             // Intercept add-to-cart to show modal
             const form = document.querySelector('form[action*="/cart/add"], form[action="/cart/add"]') || document.querySelector('[data-product-form] form');
             if (form) {
@@ -632,7 +842,7 @@
                         e.preventDefault();
                         const pricingData = await getWarrantyPricing(productInfo, sessionToken);
                         if (!pricingData) return form.submit();
-                        const html = createWarrantyOffer(productInfo, pricingData, theme);
+                        const html = createWarrantyOffer(productInfo, pricingData, theme, templates['offer_modal'], placements.learn_more === true);
                         const modal = document.createElement('div');
                         modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
                         modal.innerHTML = `<div style="max-width:520px;width:90%;background:#fff;border-radius:8px;padding:12px;">${html}</div>`;
@@ -651,10 +861,18 @@
                         });
                         const decline = container.querySelector('button[data-fp-decline]');
                         if (decline) decline.addEventListener('click', ()=> { trackEvent('offer_decline', { surface: 'offer_modal' }); localStorage.setItem(declinedKey, '1'); modal.remove(); form.submit(); });
+                        const learnBtn = container.querySelector('[data-fp-learn]');
+                        if (learnBtn && (templates['learn_more'] || {}).sections) {
+                          learnBtn.addEventListener('click', (e)=>{
+                            e.preventDefault();
+                            const lmHtml = createLearnMoreContent(templates['learn_more'], theme);
+                            showModal(lmHtml, 'fp-learn-title');
+                          });
+                        }
                     } catch { form.submit(); }
                 });
             }
-        } else if (placements.cart && !localStorage.getItem(declinedKey)) {
+        } else if (placements.cart === true && !localStorage.getItem(declinedKey)) {
             // Simple slide-out cart treatment: inject row if drawer present
             const drawer = document.querySelector('[id*="CartDrawer"], .drawer, .cart-drawer');
             if (drawer) {
@@ -662,7 +880,7 @@
                     const pricingData = await getWarrantyPricing(productInfo, sessionToken);
                     if (!pricingData) return;
                     const node = document.createElement('div');
-                    node.innerHTML = createWarrantyOffer(productInfo, pricingData, theme);
+                    node.innerHTML = createWarrantyOffer(productInfo, pricingData, theme, templates['cart'], placements.learn_more === true);
                     const container = node.firstElementChild;
                     container.style.margin = '12px';
                     drawer.appendChild(container);
@@ -680,6 +898,12 @@
                             if (dbtn && container.contains(dbtn)) {
                                 trackEvent('offer_decline', { surface: 'cart' });
                                 container.remove();
+                                return;
+                            }
+                            const lbtn = ev.target && ev.target.closest ? ev.target.closest('[data-fp-learn]') : null;
+                            if (lbtn && container.contains(lbtn)) {
+                                const lmHtml = createLearnMoreContent(templates['learn_more'], theme);
+                                showModal(lmHtml, 'fp-learn-title');
                                 return;
                             }
                         });
