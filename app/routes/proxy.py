@@ -368,6 +368,19 @@ def pricing_config():
         theme = None
         templates = {}
         enabled_by_type = {}
+        def _canon(tname: str) -> str:
+            try:
+                t = (tname or '').strip().lower()
+                t = t.replace('-', '_').replace(' ', '_')
+                # Common enum values normalization
+                if t in ('product_page', 'productpage'): return 'product_page'
+                if t in ('offer_modal', 'offermodal', 'modal'): return 'offer_modal'
+                if t in ('learn_more', 'learnmore'): return 'learn_more'
+                if t in ('cart',): return 'cart'
+                return t
+            except Exception:
+                return str(tname).lower()
+
         with get_db() as db:
             shop = db.execute(text('SELECT id FROM shops WHERE shop_url = :s'), { 's': shop_domain }).mappings().first()
             if not shop:
@@ -384,7 +397,8 @@ def pricing_config():
                   from offer_templates t
                   where t.is_active = true and t.shop_id in (0, :sid)
                 )
-                select id, shop_id, type, name, description, template_json, css_overrides, updated_at
+                select id, shop_id, type, name, description, template_json, css_overrides, updated_at,
+                       styles_css, content_html, container_html, script_js
                 from ranked where rn = 1
             '''), { 'sid': sid }).mappings().all()
 
@@ -422,13 +436,13 @@ def pricing_config():
                     'chipTextColor': th.get('chip_text'),
                     'fontFamily': th.get('font_family'),
                 }
-        # Build enabled map
-        enabled_by_type = { r['type']: bool(r['enabled']) for r in enabled_rows }
+        # Build enabled map (normalized keys)
+        enabled_by_type = { _canon(r['type']): bool(r['enabled']) for r in enabled_rows }
         # Default off if no rows
         for t in ['offer_modal','product_page','cart','learn_more']:
             enabled_by_type.setdefault(t, False)
 
-        # Build templates map
+        # Build templates map (normalized keys)
         for r in tmpl_rows:
             try:
                 base = r.get('template_json')
@@ -445,7 +459,7 @@ def pricing_config():
                 'name': r.get('name'),
                 'updated_at': r.get('updated_at').isoformat() if r.get('updated_at') else None,
             }
-            templates[r['type']] = base
+            templates[_canon(r['type'])] = base
 
         payload = {
             'enabled': enabled_by_type,
@@ -459,6 +473,163 @@ def pricing_config():
         current_app.logger.error(f"pricing_config error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
+
+@proxy_bp.route('/pricing/fulloffer', methods=['GET'])
+@require_app_proxy_auth
+def pricing_fulloffer():
+    """Single-call endpoint: returns enabled flags, normalized templates (including HTML), theme, and pricing.
+
+    Query params: shop, price, category_tag
+    """
+    try:
+        shop_domain = request.args.get('shop')
+        price_raw = request.args.get('price')
+        category_tag = request.args.get('category_tag')
+        if not shop_domain or price_raw is None or category_tag is None:
+            return jsonify({'error': 'Missing required params'}), 400
+        try:
+            product_price = float(price_raw)
+        except ValueError:
+            return jsonify({'error': 'Invalid price'}), 400
+
+        def _canon(tname: str) -> str:
+            try:
+                t = (tname or '').strip().lower().replace('-', '_').replace(' ', '_')
+                if t in ('product_page','productpage'): return 'product_page'
+                if t in ('offer_modal','offermodal','modal'): return 'offer_modal'
+                if t in ('learn_more','learnmore'): return 'learn_more'
+                if t in ('cart',): return 'cart'
+                return t
+            except Exception:
+                return str(tname).lower()
+
+        theme = None
+        templates = {}
+        enabled_by_type = {}
+        category_name = None
+        with get_db() as db:
+            shop = db.execute(text('SELECT id FROM shops WHERE shop_url = :s'), { 's': shop_domain }).mappings().first()
+            if not shop:
+                return jsonify({'error': 'Shop not found'}), 404
+            sid = shop['id']
+
+            # Resolve category tag
+            import re
+            cid = None
+            m = re.match(r'^flexprotect_cat(\d+)$', category_tag.strip())
+            if m:
+                cid = int(m.group(1))
+            if cid is not None:
+                crow = db.execute(text('SELECT product_category FROM warranty_insurance_products WHERE id = :id AND is_active = true'), { 'id': cid }).mappings().first()
+                if crow:
+                    category_name = crow['product_category']
+            if not category_name:
+                return jsonify({'error': 'Unknown category tag'}), 400
+
+            # Effective templates (global or shop-scoped) by most recent
+            tmpl_rows = db.execute(text('''
+                with ranked as (
+                  select t.*,
+                         row_number() over (
+                           partition by t.type
+                           order by (t.shop_id = :sid) desc, t.updated_at desc, t.id desc
+                         ) rn
+                  from offer_templates t
+                  where t.is_active = true and t.shop_id in (0, :sid)
+                )
+                select id, shop_id, type, name, description, template_json, css_overrides, updated_at,
+                       styles_css, content_html, container_html, script_js
+                from ranked where rn = 1
+            '''), { 'sid': sid }).mappings().all()
+
+            # Enabled flags from configs
+            enabled_rows = db.execute(text('''
+                with effective_templates as (
+                  select id, type from (
+                    select t.*,
+                           row_number() over (
+                             partition by t.type
+                             order by (t.shop_id = :sid) desc, t.updated_at desc, t.id desc
+                           ) rn
+                    from offer_templates t
+                    where t.is_active = true and t.shop_id in (0, :sid)
+                  ) z where rn = 1
+                )
+                select et.type, coalesce(oc.enabled, true) as enabled
+                from effective_templates et
+                left join offer_configs oc on oc.template_id = et.id and oc.shop_id = :sid
+            '''), { 'sid': sid }).mappings().all()
+
+            # Theme
+            th = db.execute(text('''
+                select id, text_color, background_color, button_color, chip_bg, chip_text, font_family
+                from offer_themes
+                where shop_id = :sid and (is_default = true)
+                order by updated_at desc nulls last
+                limit 1
+            '''), { 'sid': sid }).mappings().first()
+            if th:
+                theme = {
+                    'textColor': th.get('text_color'),
+                    'backgroundColor': th.get('background_color'),
+                    'buttonColor': th.get('button_color'),
+                    'chipColor': th.get('chip_bg'),
+                    'chipTextColor': th.get('chip_text'),
+                    'fontFamily': th.get('font_family'),
+                }
+
+        # Normalize enabled
+        enabled_by_type = { _canon(r['type']): bool(r['enabled']) for r in enabled_rows }
+        for t in ['offer_modal','product_page','cart','learn_more']:
+            enabled_by_type.setdefault(t, False)
+
+        # Normalize templates; assemble html from fragment columns when present
+        for r in tmpl_rows:
+            try:
+                base = r.get('template_json')
+                if isinstance(base, str):
+                    base = json.loads(base)
+            except Exception:
+                base = {}
+            if not isinstance(base, dict) or base is None:
+                base = {}
+            if r.get('css_overrides'):
+                base['css_overrides'] = r['css_overrides']
+            # Assemble html from fragments if columns exist
+            styles = r.get('styles_css') if 'styles_css' in r.keys() else None
+            content = r.get('content_html') if 'content_html' in r.keys() else None
+            container = r.get('container_html') if 'container_html' in r.keys() else None
+            script = r.get('script_js') if 'script_js' in r.keys() else None
+            if (styles or content or container):
+                html_body = (container.replace('{content}', content or '') if container else (content or ''))
+                full_html = (f"<style>{styles}</style>" + html_body) if styles else html_body
+                if full_html:
+                    base['html'] = full_html
+            if script:
+                base['script_js'] = script
+            base['_meta'] = {
+                'id': r['id'],
+                'name': r.get('name'),
+                'updated_at': r.get('updated_at').isoformat() if r.get('updated_at') else None,
+            }
+            templates[_canon(r['type'])] = base
+
+        # Pricing
+        pricing = get_all_warranty_pricing_options(product_price, category_name)
+        if not pricing:
+            return jsonify({'error': 'No pricing available'}), 404
+        session_hint = uuid.uuid4().hex[:8]
+        payload = {
+            'enabled': enabled_by_type,
+            'templates': templates,
+            'theme': theme,
+            'pricing': { 'includes_adh': pricing.get('includes_adh'), 'options': pricing.get('options'), 'session_hint': session_hint },
+            'i18n': { 'currency': 'USD', 'locale': 'en-US' },
+        }
+        return jsonify(payload)
+    except Exception as e:
+        current_app.logger.error(f"pricing_fulloffer error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 @proxy_bp.route('/events', methods=['POST'])
 @require_app_proxy_auth

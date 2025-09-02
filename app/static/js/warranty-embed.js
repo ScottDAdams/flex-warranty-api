@@ -1,5 +1,6 @@
-// Flex Warranty Embed Script
+// Flex Warranty Embed Script v2.1.5 - 2025-08-25
 // This script will be embedded on product pages to show warranty offers
+// VERSION: Removed hardcoded CSS overrides for responsive template support
 
 (function() {
     'use strict';
@@ -11,8 +12,8 @@
         const style = document.createElement('style');
         style.id = 'fp-embed-styles';
         style.textContent = `
-          .fp-option { transition: transform .06s ease, box-shadow .06s ease, filter .12s ease; }
-          .fp-option:hover { filter: brightness(1.06); box-shadow: 0 1px 0 rgba(0,0,0,.08); }
+          .fp-option { transition: transform .06s ease, box-shadow .12s ease, border-color .12s ease, filter .12s ease; border:2px solid #d1d5db; }
+          .fp-option:hover { filter: brightness(1.02); border-color: var(--fp-accent, #2563eb); box-shadow: 0 0 0 4px var(--fp-glow, rgba(37,99,235,.2)); }
           .fp-option:active { transform: translateY(1px); }
           .fp-link { opacity:.9; }
           .fp-link:hover { opacity:1; text-decoration: underline; }
@@ -51,6 +52,306 @@
         try { console.log('[FlexProtect]', ...args); } catch {}
     }
 
+    // Handle warranty product pages - hide variant selector and show only selected variant
+    function handleWarrantyProductPage() {
+        try {
+            // Check if we're on a Flex Protect warranty product page
+            if (!window.ShopifyAnalytics || !window.ShopifyAnalytics.meta || !window.ShopifyAnalytics.meta.product) {
+                return;
+            }
+            
+            const product = window.ShopifyAnalytics.meta.product;
+            if (product.vendor !== 'Flex Protect') {
+                return;
+            }
+            
+            fpLog('Detected Flex Protect warranty product page, hiding variant selector');
+            
+            // Get current variant ID from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const variantId = urlParams.get('variant');
+            
+            if (!variantId) {
+                fpLog('No variant ID in URL, cannot determine which variant to show');
+                return;
+            }
+            
+            // Hide variant selector elements with !important CSS to override theme styles
+            const variantSelectors = [
+                '#variant-selects', // Target the specific element you found
+                '.product__variant-selector',
+                '.variant-selector',
+                '.product-variant-selector',
+                '[data-variant-selector]',
+                '.product-form__variants',
+                'select[name="id"]',
+                '.product-single__variants',
+                '.product-variants',
+                '.product-options',
+                '.product-form__options',
+                '.product-single__options'
+            ];
+            
+            let selectorHidden = false;
+            
+            // Create a comprehensive CSS rule to hide all variant selectors
+            const hideVariantCSS = `
+                variant-selects,
+                [id^="variant-selects"],
+                .product__variant-selector,
+                .variant-selector,
+                .product-variant-selector,
+                [data-variant-selector],
+                .product-form__variants,
+                select[name="id"],
+                .product-single__variants,
+                .product-variants,
+                .product-options,
+                .product-form__options,
+                .product-single__options {
+                    display: none !important;
+                }
+            `;
+            
+            // Inject the CSS rule
+            const style = document.createElement('style');
+            style.textContent = hideVariantCSS;
+            document.head.appendChild(style);
+            fpLog('Injected CSS to hide variant selectors with !important');
+            selectorHidden = true;
+            
+            // More aggressive approach: find and hide any element containing variant options
+            if (!selectorHidden) {
+                fpLog('Standard selectors failed, using aggressive approach');
+                
+                            // First try the specific element you found
+            const variantSelects = document.querySelector('#variant-selects');
+            if (variantSelects) {
+                // Use CSS injection to override the component-picker.css display: block
+                const style = document.createElement('style');
+                style.textContent = `
+                    #variant-selects {
+                        display: none !important;
+                    }
+                    variant-selects {
+                        display: none !important;
+                    }
+                `;
+                document.head.appendChild(style);
+                fpLog('Hidden #variant-selects element with !important CSS');
+                selectorHidden = true;
+            } else {
+                    // Look for elements that contain variant option text
+                    const allElements = document.querySelectorAll('*');
+                    let hiddenCount = 0;
+                    
+                    for (const el of allElements) {
+                        try {
+                            if (el.children.length === 0 && // Only text nodes
+                                el.textContent && 
+                                el.textContent.trim() &&
+                                el.textContent.includes('Protection -') && 
+                                el.textContent.includes('yr') &&
+                                !el.textContent.includes('Flex Protect - Protection - f64c0e85 - 3yr')) { // Don't hide the title
+                                
+                                // Find the closest clickable parent (button, option, etc.)
+                                let parent = el.parentElement;
+                                while (parent && parent !== document.body) {
+                                    if (parent.tagName === 'BUTTON' || 
+                                        parent.tagName === 'INPUT' || 
+                                        parent.tagName === 'OPTION' ||
+                                        parent.classList.contains('option') ||
+                                        parent.classList.contains('variant') ||
+                                        parent.classList.contains('chip') ||
+                                        parent.getAttribute('role') === 'option') {
+                                        
+                                        parent.style.display = 'none';
+                                        fpLog('Hidden variant option parent:', parent.tagName, parent.className, el.textContent);
+                                        hiddenCount++;
+                                        break;
+                                    }
+                                    parent = parent.parentElement;
+                                }
+                            }
+                        } catch {}
+                    }
+                    
+                    fpLog(`Aggressive approach hidden ${hiddenCount} variant options`);
+                }
+            }
+            
+            if (!selectorHidden) {
+                // More targeted fallback: look for specific variant option patterns
+                const variantOptionSelectors = [
+                    'button[data-variant-id]',
+                    'input[data-variant-id]',
+                    'select option',
+                    '.variant-option',
+                    '[data-variant-option]',
+                    '.product-option',
+                    '[data-product-option]'
+                ];
+                
+                variantOptionSelectors.forEach(selector => {
+                    try {
+                        document.querySelectorAll(selector).forEach(el => {
+                            if (el.textContent && el.textContent.includes('Protection -') && el.textContent.includes('yr')) {
+                                // Only hide if it's not the currently selected variant
+                                const elVariantId = el.getAttribute('data-variant-id') || el.value;
+                                if (elVariantId && String(elVariantId) !== String(variantId)) {
+                                    el.style.display = 'none';
+                                    fpLog('Hidden variant option:', el.textContent);
+                                }
+                            }
+                        });
+                    } catch {}
+                });
+            }
+            
+            // Show only the selected variant details
+            const selectedVariant = product.variants.find(v => String(v.id) === String(variantId));
+            if (selectedVariant) {
+                fpLog('Showing only selected variant:', selectedVariant.public_title);
+                
+                // Update page title to show only selected variant
+                const titleElements = [
+                    'h1.product-single__title',
+                    '.product__title',
+                    'h1.product-title',
+                    '[data-product-title]',
+                    'h1'
+                ];
+                
+                titleElements.forEach(selector => {
+                    try {
+                        const titleEl = document.querySelector(selector);
+                        if (titleEl && titleEl.textContent.includes('Flex Protect')) {
+                            titleEl.textContent = `Flex Protect - ${selectedVariant.public_title}`;
+                            fpLog('Updated product title');
+                        }
+                    } catch {}
+                });
+                
+                            // Hide other variant details that might be visible
+            const variantDetailSelectors = [
+                '.variant-detail',
+                '[data-variant-detail]',
+                '.product-variant-detail',
+                '.product-option__value',
+                '.product-option__label',
+                '.product-form__option'
+            ];
+            
+            variantDetailSelectors.forEach(selector => {
+                try {
+                    document.querySelectorAll(selector).forEach(el => {
+                        const elVariantId = el.getAttribute('data-variant-id') || el.getAttribute('data-variant');
+                        if (elVariantId && String(elVariantId) !== String(variantId)) {
+                            el.style.display = 'none';
+                        }
+                    });
+                } catch {}
+            });
+            
+            // Additional: hide any remaining variant option buttons/chips
+            const remainingVariantOptions = document.querySelectorAll('button, .btn, .chip, .option');
+            remainingVariantOptions.forEach(el => {
+                try {
+                    if (el.textContent && 
+                        el.textContent.includes('Protection -') && 
+                        el.textContent.includes('yr') &&
+                        !el.closest('.product-form') && // Don't hide form elements
+                        !el.closest('.product-single__form')) {
+                        
+                        // Check if this is the selected variant
+                        const isSelected = el.classList.contains('selected') || 
+                                         el.classList.contains('active') ||
+                                         el.getAttribute('aria-selected') === 'true';
+                        
+                        if (!isSelected) {
+                            el.style.display = 'none';
+                            fpLog('Hidden remaining variant option:', el.textContent);
+                        }
+                    }
+                } catch {}
+            });
+            }
+            
+                    } catch (e) {
+                fpLog('Error handling warranty product page:', e);
+            }
+            
+            // Use MutationObserver to ensure CSS is injected after the element exists
+            const observer = new MutationObserver((mutations, obs) => {
+                if (document.querySelector('variant-selects')) {
+                    fpLog('Found variant-selects element, re-injecting CSS...');
+                    
+                    // Re-inject CSS to ensure it takes effect
+                    const hideVariantCSS = `
+                        variant-selects,
+                        [id^="variant-selects"] {
+                            display: none !important;
+                        }
+                    `;
+                    const style = document.createElement('style');
+                    style.textContent = hideVariantCSS;
+                    document.head.appendChild(style);
+                    
+                    fpLog('Re-injected CSS for variant-selects element');
+                    obs.disconnect(); // Stop observing once we've found and hidden it
+                }
+            });
+            
+            // Start observing for DOM changes
+            observer.observe(document, { childList: true, subtree: true });
+            
+            // Also run after a short delay as backup
+            setTimeout(() => {
+                try {
+                    fpLog('Running delayed variant hiding...');
+                    
+                    // Re-run the hiding logic without the recursive call
+                    const remainingVariantOptions = document.querySelectorAll('button, .btn, .chip, .option, [data-variant-id]');
+                    let delayedHiddenCount = 0;
+                    
+                    remainingVariantOptions.forEach(el => {
+                        try {
+                            if (el.textContent && 
+                                el.textContent.includes('Protection -') && 
+                                el.textContent.includes('yr') &&
+                                !el.textContent.includes('Flex Protect - Protection - f64c0e85 - 3yr')) {
+                                
+                                el.style.display = 'none';
+                                fpLog('Delayed hidden variant option:', el.textContent);
+                                delayedHiddenCount++;
+                            }
+                        } catch {}
+                    });
+                    
+                    fpLog(`Delayed hiding found and hidden ${delayedHiddenCount} additional variant options`);
+                } catch (e) {
+                    fpLog('Error in delayed variant hiding:', e);
+                }
+            }, 1000);
+        }
+
+    // Remove any existing FP modal wrappers/containers before inserting a new one
+    function removeExistingModals(){
+        try {
+            // Only remove modal containers, NOT the product page offer
+            const selectors = [
+                '#flexprotect-modal-container',
+                '.flexprotect-modal-container'
+            ];
+            
+            selectors.forEach(selector => {
+                try {
+                    document.querySelectorAll(selector).forEach(el => el.remove());
+                } catch {}
+            });
+        } catch {}
+    }
+
     // Storefront GraphQL helpers removed for stability; we rely solely on theme AJAX cart endpoints
 
     // i18n defaults; server can override via /pricing/config
@@ -81,6 +382,271 @@
     // getParentLineId removed – nested cart lines path deprecated
 
     // Deprecated nested cart lines path removed for stability; using /cart/add.js multi-item add
+    
+    // Prefetch helpers
+    function preloadImage(url){
+        try { if (!url) return; const img = new Image(); img.referrerPolicy = 'no-referrer'; img.decoding = 'async'; img.loading = 'eager'; img.src = url; } catch {}
+    }
+    function prefetchOfferModal(productInfo, theme, templates, pricingData, showLearnMore){
+        try {
+            window.__FP_PREFETCH = window.__FP_PREFETCH || {};
+            // Compute images to warm
+            const t = templates && templates['offer_modal'] ? templates['offer_modal'] : {};
+            const STATIC = 'https://flex-warranty-api.fly.dev/static/images/offers';
+            const heroUrl = (t && (t.heroUrl || (t.images && t.images.hero))) || `${STATIC}/Hero-Image.png`;
+            const brand = (t && t.brand) || { logoUrl: `${STATIC}/FlexProtect-Shield.png` };
+            const poweredBy = (t && t.poweredBy) || { logoUrl: `${STATIC}/Powered-By-AIG.png` };
+            preloadImage(heroUrl);
+            preloadImage(brand && brand.logoUrl);
+            preloadImage(poweredBy && poweredBy.logoUrl);
+            // Cache server-provided HTML only; no fallback assembly
+            const html = (t && typeof t.html === 'string' && !isPlaceholderHtml(t.html)) ? t.html : '';
+            window.__FP_PREFETCH.offer_modal = html;
+        } catch {}
+    }
+
+    // If we inject a full server-provided modal (with overlay/X), wire close events
+    function wireServerModalClose(mcontainer, cleanup){
+        try {
+            const root = document.getElementById('flexprotect-modal-container') || mcontainer;
+            if (!root) return;
+            try {
+                // Force overlay visible and highest stacking context
+                const ov = root.querySelector('.modal-overlay');
+                if (ov) {
+                    ov.style.zIndex = '2147483647';
+                    ov.style.display = 'flex';
+                    ov.style.position = 'fixed';
+                    ov.style.inset = '0';
+                }
+            } catch {}
+            // Avoid extra overrides; rely on snippet CSS to control sizes to match design
+            const closeBtn = root.querySelector('.modal-close-btn');
+            const overlay = root.querySelector('.modal-overlay');
+            const doClose = () => { try { cleanup && cleanup(); } catch {} };
+            if (closeBtn) closeBtn.addEventListener('click', doClose, true);
+            if (overlay) overlay.addEventListener('click', (e)=>{ try { if (e.target === overlay) doClose(); } catch {} }, true);
+            try { document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') doClose(); }, { once: true }); } catch {}
+        } catch {}
+    }
+
+    // Ensure modal overlay is visible; if not, fall back to direct insertion
+    function ensureModalVisibleOrFallback(mcontainer, html){
+        try {
+            if (!mcontainer) return { mcontainer, usedFallback: false };
+            const overlay = mcontainer.querySelector ? mcontainer.querySelector('.modal-overlay') : null;
+            if (overlay) {
+                try {
+                    overlay.style.zIndex = '2147483647';
+                    overlay.style.display = 'flex';
+                    overlay.style.position = 'fixed';
+                    overlay.style.inset = '0';
+                    overlay.style.opacity = overlay.style.opacity || '1';
+                    overlay.style.pointerEvents = 'auto';
+                } catch {}
+                // Remove the fallback logic that was creating duplicate content
+                // Just ensure the existing modal is visible
+            }
+        } catch {}
+        return { mcontainer, usedFallback: false };
+    }
+
+    // Build options HTML for selector from pricing
+    function buildSelectorOptions(pricingData){
+        try {
+            const valid = Array.isArray(pricingData && pricingData.options) ? pricingData.options.filter(o=> typeof o.price !== 'undefined') : [];
+            const sorted = valid.slice().sort((a,b)=> Number(b.price) - Number(a.price));
+            const html = `${sorted.map(o=>{
+                const termNum = Number(o.term);
+                const label = `${termNum} Year${termNum === 1 ? '' : 's'} Protection`;
+                const priceFmt = formatMoney(Number(o.price), __FP_I18N.currency, __FP_I18N.locale);
+                return `<div class="opt" data-option data-term="${termNum}" data-price="${Number(o.price).toFixed(2)}"><div class="label">${label}</div><div class="price">${priceFmt}</div></div>`;
+            }).join('')}
+            <div class="opt" data-option data-term="none" data-price="0"><div class="label">Do Not Protect My Purchase</div></div>`;
+            return { html, min: valid.length ? Math.min.apply(null, valid.map(o=> Number(o.price))) : null };
+        } catch { return { html: '', min: null }; }
+    }
+
+    // Hydrate server-supplied modal selector with live pricing
+    function hydrateModalSelector(root, pricingData){
+        try {
+            if (!root || !pricingData) return;
+            const { html, min } = buildSelectorOptions(pricingData);
+            const opts = root.querySelector('[data-opts]'); if (opts) opts.innerHTML = html;
+            const sub = root.querySelector('[data-sub]'); if (sub && min != null) sub.textContent = `For as low as ${formatMoney(min, __FP_I18N.currency, __FP_I18N.locale)}`;
+        } catch {}
+    }
+
+    // Insert server-provided modal HTML directly (no shadow root duplication)
+    function insertServerModalShadow(html, scriptJs){
+        // Just inject the HTML directly - it already contains the complete modal structure
+        document.body.insertAdjacentHTML('beforeend', html);
+        const mcontainer = document.getElementById('flexprotect-modal-container');
+        const cleanup = () => { try { mcontainer && mcontainer.remove(); } catch {} };
+        
+        // Execute the script_js content if provided
+        if (scriptJs && typeof scriptJs === 'string' && scriptJs.trim()) {
+            try {
+                // Wait for DOM to be ready, then execute the script
+                setTimeout(() => {
+                    try {
+                        // Create a script element and execute it
+                        const script = document.createElement('script');
+                        script.textContent = scriptJs;
+                        document.body.appendChild(script);
+                        // Remove the script element after execution
+                        setTimeout(() => { try { script.remove(); } catch {} }, 100);
+                        console.log('Modal script executed successfully');
+                    } catch (e) {
+                        console.warn('Failed to execute modal script:', e);
+                    }
+                }, 50); // Small delay to ensure DOM is ready
+            } catch (e) {
+                console.warn('Failed to execute modal script:', e);
+            }
+        }
+        
+        return { mcontainer, cleanup, shadow: null };
+    }
+
+    // Insert server-provided product_page HTML in a Shadow DOM to prevent style bleed
+    function insertServerInlineShadow(html, beforeNode){
+        const host = document.createElement('div');
+        host.setAttribute('data-fp-shadow-inline','');
+        try {
+            host.style.display = 'block';
+            host.style.width = '100%';
+            if (beforeNode && beforeNode.parentNode) beforeNode.parentNode.insertBefore(host, beforeNode);
+            else document.body.appendChild(host);
+        } catch {}
+        const shadow = host.attachShadow ? host.attachShadow({ mode: 'open' }) : null;
+        if (!shadow) { host.innerHTML = html; return { root: host, remove: ()=> { try { host.remove(); } catch {} } }; }
+        shadow.innerHTML = html;
+        // Let the template's CSS handle typography - no hardcoded overrides
+        const root = shadow; // use shadow root for event wiring/hydration
+        const remove = () => { try { host.remove(); } catch {} };
+        return { root, remove };
+    }
+
+    // Detect placeholder sentinel content in template.html
+    function isPlaceholderHtml(str){
+        try {
+            const s = String(str || '').toLowerCase();
+            return s.includes('[paste your full offer modal html here]') || s.includes('[paste your full learn more html here]') || s.includes('[paste your full');
+        } catch { return false; }
+    }
+
+    // Wire up the selector behavior inside the modal (drop-up + GO button)
+    function wireSelectorBehavior(root){
+        try {
+            if (!root || root.__fp_wired) return; root.__fp_wired = true;
+            const summary = root.querySelector('[data-summary]');
+            const opts = root.querySelector('[data-opts]');
+            const go = root.querySelector('[data-go]');
+            const title = root.querySelector('[data-title]');
+            const sub = root.querySelector('[data-sub]');
+            const items = Array.from(root.querySelectorAll('[data-option]'));
+            let current = null; let submitted = false;
+
+            function openDrop(open){
+                try { opts.classList.toggle('open', !!open); summary.setAttribute('aria-expanded', open ? 'true' : 'false'); } catch {}
+            }
+            function showGo(show){ try { go.classList.toggle('show', !!show); } catch {} }
+            function reset(){ submitted = false; try { summary.classList.remove('ok','bad'); } catch {} showGo(false); }
+
+            if (summary) summary.addEventListener('click', (e)=>{
+                e.stopPropagation();
+                if (submitted) { reset(); return; }
+                const now = !(opts && opts.classList.contains('open'));
+                openDrop(now);
+                if (now) showGo(false); else if (current) showGo(true);
+            }, true);
+
+            items.forEach((it)=>{
+                it.addEventListener('click', ()=>{
+                    if (submitted) reset();
+                    items.forEach(x=> x.classList.remove('selected'));
+                    it.classList.add('selected');
+                    current = it;
+                    const term = it.getAttribute('data-term');
+                    const price = it.getAttribute('data-price');
+                    if (term === 'none') {
+                        // Let database script handle text - just set classes
+                        try { summary.classList.add('bad'); summary.classList.remove('ok'); } catch {}
+                    } else {
+                        // Let database script handle text - just set classes
+                        try { summary.classList.add('ok'); summary.classList.remove('bad'); } catch {}
+                    }
+                    openDrop(false);
+                    showGo(true);
+                });
+            });
+
+            if (go) go.addEventListener('click', ()=>{
+                if (!current) return;
+                submitted = true;
+                const term = current.getAttribute('data-term');
+                const price = current.getAttribute('data-price');
+                if (term === 'none') {
+                    // Let database script handle text
+                } else {
+                    // Let database script handle text
+                }
+                root.dispatchEvent(new CustomEvent('fp:selection', { detail: { term, price, submitted: true }, bubbles: true, composed: true }));
+            });
+
+            window.addEventListener('click', (e)=>{ try { if (!root.contains(e.target)) openDrop(false); } catch {} }, true);
+        } catch {}
+    }
+
+    // Hydrate server-provided product_page HTML with dynamic pricing/options
+    function hydrateTemplateProductPage(container, pricingData){
+        try {
+            const options = Array.isArray(pricingData && pricingData.options) ? pricingData.options : [];
+            const two = options.find(o=> Number(o.term) === 2);
+            const three = options.find(o=> Number(o.term) === 3);
+            // Support legacy '.plan', newer '.plan-option', and current '.option' blocks
+            const planButtons = Array.from(container.querySelectorAll('.plan'));
+            const planOptions = Array.from(container.querySelectorAll('.plan-option'));
+            const inlineOptions = Array.from(container.querySelectorAll('.option'));
+            const plans = planButtons.length ? planButtons : (planOptions.length ? planOptions : inlineOptions);
+            // Map first to 2yr, second to 3yr if present
+            if (plans[0] && two){
+                plans[0].setAttribute('data-fp-term','2');
+                plans[0].setAttribute('data-term','2');
+                plans[0].setAttribute('data-fp-price', String(Number(two.price).toFixed(2)));
+                plans[0].setAttribute('role','button');
+                plans[0].style.cursor = 'pointer';
+                try {
+                  const priceNode = plans[0].querySelector('.price, .option-price');
+                  if (priceNode) priceNode.textContent = `${formatMoney(Number(two.price), __FP_I18N.currency, __FP_I18N.locale)}`;
+                  const yearsNode = plans[0].querySelector('.years, .option-title');
+                  if (yearsNode) yearsNode.textContent = `2 Years Added Protection –`;
+                  else plans[0].textContent = `2 Years – ${formatMoney(Number(two.price), __FP_I18N.currency, __FP_I18N.locale)}`;
+                } catch {}
+            }
+            if (plans[1] && three){
+                plans[1].setAttribute('data-fp-term','3');
+                plans[1].setAttribute('data-term','3');
+                plans[1].setAttribute('data-fp-price', String(Number(three.price).toFixed(2)));
+                plans[1].setAttribute('role','button');
+                plans[1].style.cursor = 'pointer';
+                try {
+                  const priceNode = plans[1].querySelector('.price, .option-price');
+                  if (priceNode) priceNode.textContent = `${formatMoney(Number(three.price), __FP_I18N.currency, __FP_I18N.locale)}`;
+                  const yearsNode = plans[1].querySelector('.years, .option-title');
+                  if (yearsNode) yearsNode.textContent = `3 Years Added Protection –`;
+                  else plans[1].textContent = `3 Years – ${formatMoney(Number(three.price), __FP_I18N.currency, __FP_I18N.locale)}`;
+                } catch {}
+            }
+            // Low price line if present
+            const low = Math.min.apply(null, options.map(o=> Number(o.price)).filter(n=> !isNaN(n)));
+            if (isFinite(low)){
+                const sub = container.querySelector('[data-sub], .sub');
+                if (sub) { try { sub.textContent = `For as low as ${formatMoney(low, __FP_I18N.currency, __FP_I18N.locale)}`; } catch {} }
+            }
+        } catch {}
+    }
     
     // Product category mapping
     const PRODUCT_CATEGORIES = {
@@ -170,92 +736,18 @@
         }
     }
     
-    // Create warranty offer HTML
-    function createWarrantyOffer(productInfo, pricingData, theme, template, showLearnMore) {
-        const includesAdh = !!pricingData.includes_adh;
-        const options = Array.isArray(pricingData.options) ? pricingData.options : [];
-        const tStrings = (template && template.strings) || {};
-        const productCategory = productInfo.category_name || 'Device';
-        const two = options.find(o=> Number(o.term) === 2);
-        const three = options.find(o=> Number(o.term) === 3);
-        const colors = safeTheme(theme);
-        const headline = tStrings.headline || `Protect Your ${productCategory}`;
-        const subhead = tStrings.subhead || `Extended warranty coverage${includesAdh ? ' (includes accidental damage)' : ''}`;
-        const declineLabel = tStrings.decline || "I don't want protection";
-        const learnMoreLabel = tStrings.learn_more || 'Learn more';
-        const includeLearn = !!showLearnMore;
-        const bullets = Array.isArray(tStrings.bullets) && tStrings.bullets.length ? tStrings.bullets : [
-          'Extended failure protection', 'Hassle-free replacement', '24/7 support', ...(includesAdh ? ['Accidental damage coverage'] : [])
-        ];
-        const heroUrl = (template && (template.heroUrl || (template.images && template.images.hero))) || null;
-        
-        return `
-            <div class="flex-warranty-offer" style="
-                border: 2px solid ${colors.buttonColor};
-                border-radius: 8px;
-                padding: 20px;
-                margin: 20px 0;
-                background: ${colors.backgroundColor};
-                font-family: ${colors.fontFamily};
-                color: ${colors.textColor};
-                position: relative;
-                z-index: 2;
-            ">
-                <div style="display:flex; gap:16px; align-items:center; margin-bottom:15px;">
-                  <div style="flex:1; min-width:0;">
-                    <h3 style="margin:0; color:#1e293b; font-size:18px; font-weight:600;">${headline}</h3>
-                    <p style="margin:5px 0 0 0; color:#64748b; font-size:14px;">${subhead}</p>
-                    </div>
-                  ${heroUrl ? `<img src="${heroUrl}" alt="Protection" style="width:120px; height:auto; border-radius:6px; object-fit:cover;">` : ''}
-                </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <ul style="margin:0; padding-left:20px; color:#475569; font-size:14px;">
-                      ${bullets.map(b => `<li>${b}</li>`).join('')}
-                    </ul>
-                </div>
-                
-                <div style="display:flex; gap:8px;">
-                  ${two ? `<button type="button" class="fp-option" data-fp-term="2" data-fp-price="${Number(two.price).toFixed(2)}" style="flex:1; background:${colors.chipColor}; color:${colors.chipTextColor}; border:1px solid ${colors.buttonColor}; padding:12px; border-radius:6px; cursor:pointer; pointer-events:auto;">2 Year: ${formatMoney(Number(two.price), __FP_I18N.currency, __FP_I18N.locale)}</button>`: ''}
-                  ${three ? `<button type="button" class="fp-option" data-fp-term="3" data-fp-price="${Number(three.price).toFixed(2)}" style="flex:1; background:${colors.chipColor}; color:${colors.chipTextColor}; border:1px solid ${colors.buttonColor}; padding:12px; border-radius:6px; cursor:pointer; pointer-events:auto;">3 Year: ${formatMoney(Number(three.price), __FP_I18N.currency, __FP_I18N.locale)}</button>`: ''}
-                </div>
-                <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
-                  ${includeLearn ? `<button type="button" data-fp-learn class="fp-link" style="background:none; border:none; color:#64748b; cursor:pointer; pointer-events:auto;">${learnMoreLabel}</button>` : '<span></span>'}
-                  <button type="button" data-fp-decline class="fp-link" style="background:none; border:none; color:#64748b; cursor:pointer; pointer-events:auto;">${declineLabel}</button>
-                </div>
-            </div>
-        `;
+    // Create warranty offer HTML: removed hardcoded fallbacks; rely on server-provided HTML only
+    function createWarrantyOffer() { return ''; }
+    
+    function createLearnMoreContent(template) {
+        try { if (template && typeof template.html === 'string' && template.html.trim().length > 0) { return template.html; } } catch {}
+        return '';
     }
     
-    function createLearnMoreContent(template, theme) {
-        const colors = safeTheme(theme);
-        const tStrings = (template && template.strings) || {};
-        const headline = tStrings.headline || 'Learn more about protection';
-        const subhead = tStrings.subhead || '';
-        const bullets = Array.isArray(tStrings.bullets) && tStrings.bullets.length ? tStrings.bullets : [
-          'What is covered', 'How claims work', 'Exclusions'
-        ];
-        const heroUrl = (template && (template.heroUrl || (template.images && template.images.hero))) || null;
-        return `
-          <div class="flex-warranty-learn" style="padding:16px; color:${colors.textColor}; font-family:${colors.fontFamily};">
-            <div style="display:flex; gap:16px; align-items:center; margin-bottom:12px;">
-              <div style="flex:1; min-width:0;">
-                <h3 id="fp-learn-title" style="margin:0; font-size:18px; font-weight:600;">${headline}</h3>
-                ${subhead ? `<p style=\"margin:6px 0 0; color:#64748b;\">${subhead}</p>` : ''}
-              </div>
-              ${heroUrl ? `<img src="${heroUrl}" alt="Learn more" style="width:120px; height:auto; border-radius:6px; object-fit:cover;">` : ''}
-            </div>
-            <ul style="margin:0; padding-left:20px; color:#475569;">
-              ${bullets.map(b => `<li>${b}</li>`).join('')}
-            </ul>
-          </div>
-        `;
-    }
-
     function showModal(innerHtml, titleId) {
         const modal = document.createElement('div');
-        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
-        modal.innerHTML = `<div role="dialog" aria-modal="true" ${titleId ? `aria-labelledby="${titleId}"` : ''} tabindex="-1" style="max-width:640px;width:92%;background:#fff;border-radius:8px;padding:12px;outline:none;">${innerHtml}<div style=\"text-align:right;margin-top:8px;\"><button type=\"button\" data-fp-close class=\"fp-link\" style=\"background:none;border:none;color:#64748b;cursor:pointer;\">Close</button></div></div>`;
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:2147483647;';
+        modal.innerHTML = `<div role="dialog" aria-modal="true" ${titleId ? `aria-labelledby="${titleId}"` : ''} tabindex="-1" style="max-width:960px;width:95%;background:#fff;border-radius:12px;padding:12px;outline:none;box-shadow:0 10px 30px rgba(0,0,0,.2);">${innerHtml}<div style=\"text-align:right;margin-top:8px;\"><button type=\"button\" data-fp-close class=\"fp-link\" style=\"background:none;border:none;color:#64748b;cursor:pointer;\">Close</button></div></div>`;
         document.body.appendChild(modal);
         const close = () => { try { modal.remove(); } catch {} };
         modal.addEventListener('click', (e)=>{ if (e.target === modal) close(); });
@@ -424,10 +916,10 @@
                                       const render = async () => {
                                         const pricingData2 = await getWarrantyPricing(productInfo, sessionToken);
                                         if (!pricingData2) return;
-                                        const html = createWarrantyOffer(productInfo, pricingData2, theme, templates['offer_modal']);
+                                        const html = (window.__FP_PREFETCH && window.__FP_PREFETCH.offer_modal) || createWarrantyOffer('offer_modal', productInfo, pricingData2, theme, templates['offer_modal']);
                                         const modal = document.createElement('div');
-                                        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
-                                        modal.innerHTML = `<div style=\"max-width:520px;width:90%;background:#fff;border-radius:8px;padding:12px;\">${html}</div>`;
+                                        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:2147483647;';
+                                        modal.innerHTML = `<div style=\"max-width:820px;width:95%;background:#fff;border-radius:12px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);\">${html}</div>`;
                                         document.body.appendChild(modal);
                                         const mcontainer = modal.querySelector('.flex-warranty-offer');
                                         trackEvent('offer_view', { surface: 'offer_modal', price: productInfo.price, category_tag: productInfo.category_tag });
@@ -530,30 +1022,18 @@
         let layout = 'compact';
         // Per-product decline key will be computed once product handle/id is known
         let declinedKey = null;
+        // Single-call fetch: templates + theme + pricing
         try {
-            const cfgUrl = new URL(`${PROXY_BASE}/pricing/config`, window.location.origin);
-            if (window.Shopify && window.Shopify.shop) cfgUrl.searchParams.set('shop', window.Shopify.shop);
-            fpLog('config GET', cfgUrl.toString());
-            const res = await fetch(cfgUrl.toString());
-            if (res.ok) {
-                const j = await res.json();
-                placements = Object.assign(placements, j.enabled || {});
-                theme = j.theme || null;
-                templates = j.templates || {};
-                layout = j.layout || 'compact';
-                if (j.i18n) { __FP_I18N = Object.assign(__FP_I18N, j.i18n || {}); }
-                fpLog('config ok', placements, layout, __FP_I18N, theme, Object.keys(templates));
-            } else {
-                const txt = await res.clone().text().catch(()=> '');
-                fpLog('config fail', res.status, txt.slice(0, MAX_SNIPPET));
-            }
+            const fullUrl = new URL(`${PROXY_BASE}/pricing/fulloffer`, window.location.origin);
+            if (window.Shopify && window.Shopify.shop) fullUrl.searchParams.set('shop', window.Shopify.shop);
+            // price/category_tag will be set after product JSON is known (below) via a second call
+            fpLog('fulloffer will fetch after product info');
         } catch {}
         const pj = await fetchProductJson();
         if (!pj) return;
         const tags = Array.isArray(pj.tags) ? pj.tags : [];
-        const on = tags.includes('flexprotect_on');
         const catTag = (tags.find(t=> String(t).startsWith('flexprotect_cat')) || '').trim();
-        if (!on || !catTag) return;
+        if (!catTag) { fpLog('FlexProtect: missing flexprotect_cat tag; skipping. Tags:', tags); return; }
         const price = (typeof pj.price === 'number' ? pj.price : 0) / 100;
         window.__FP_CATEGORY_TAG = catTag;
         const productInfo = { id: pj.id, handle: pj.__handle, title: pj.title, price, vendor: pj.vendor, tags: pj.tags, category_tag: catTag };
@@ -568,29 +1048,183 @@
         if (!isProductEligible(productInfo)) return;
         const sessionToken = getSessionToken();
 
+        // Fetch full offer once with resolved price and category
+        let full = null;
+        try {
+            const u = new URL(`${PROXY_BASE}/pricing/fulloffer`, window.location.origin);
+            if (window.Shopify && window.Shopify.shop) u.searchParams.set('shop', window.Shopify.shop);
+            u.searchParams.set('price', String(price));
+            u.searchParams.set('category_tag', String(catTag));
+            fpLog('fulloffer GET', u.toString());
+            const r = await fetch(u.toString());
+            if (r.ok) { full = await r.json(); }
+            if (full && full.i18n) { __FP_I18N = Object.assign(__FP_I18N, full.i18n || {}); }
+            if (full && full.theme) { theme = full.theme; }
+            if (full && full.templates) { templates = full.templates; }
+            if (full && full.enabled) { placements = Object.assign(placements, full.enabled || {}); }
+        } catch {}
+
         if (placements.product_page === true) {
-            const pricingData = await getWarrantyPricing(productInfo, sessionToken);
+            const pricingData = (full && full.pricing) ? full.pricing : await getWarrantyPricing(productInfo, sessionToken);
             if (!pricingData) return;
-            const offerHTML = createWarrantyOffer(productInfo, pricingData, theme, templates['product_page'], placements.learn_more === true);
+            // Prefer server-provided product_page HTML if present
+            const tp = templates['product_page'] || {};
+            let offerHTML = '';
+            if (tp && typeof tp.html === 'string' && tp.html.trim().length > 0 && !isPlaceholderHtml(tp.html)) {
+                offerHTML = tp.html;
+            } else {
+                offerHTML = createWarrantyOffer('product_page', productInfo, pricingData, theme, templates['product_page'], placements.learn_more === true);
+            }
             const insertTarget = document.querySelector('.product-form') || document.querySelector('[data-product-form]') || document.querySelector('.product__info') || document.querySelector('.product-single__info');
             let container = null;
-            if (insertTarget) { insertTarget.insertAdjacentHTML('beforebegin', offerHTML); container = insertTarget.previousElementSibling; }
+            if (insertTarget) {
+                // If server provided full HTML, isolate in shadow to avoid theme bleed
+                if (tp && typeof tp.html === 'string' && tp.html.trim().length > 0 && !isPlaceholderHtml(tp.html)) {
+                    const ins = insertServerInlineShadow(offerHTML, insertTarget);
+                    container = ins && (ins.root || null);
+                } else {
+                    insertTarget.insertAdjacentHTML('beforebegin', offerHTML);
+                    container = insertTarget.previousElementSibling;
+                }
+            }
             if (container) {
                 trackEvent('offer_view', { surface: 'product_page', price: productInfo.price, category_tag: productInfo.category_tag });
+                // Warm modal content/images in background for fast display later
+                try { prefetchOfferModal(productInfo, theme, templates, pricingData, placements.learn_more === true); } catch {}
                 let selected = false;
                 let selectedPlan = null;
                 const sessionHint = (pricingData && pricingData.session_hint) || '';
+                // Do NOT pre-select a plan by default; also no decline by default
+                try { localStorage.removeItem(`fp_declined:${productInfo.handle || productInfo.id}`); } catch {}
+                // If server HTML provided, hydrate dynamic prices into it
+                try { if (tp && typeof tp.html === 'string' && tp.html.trim().length > 0 && !isPlaceholderHtml(tp.html)) { hydrateTemplateProductPage(container, pricingData); } } catch {}
+                
+                // Execute the script_js content within the Shadow DOM
+                if (tp && tp.script_js && typeof tp.script_js === 'string' && tp.script_js.trim()) {
+                    try {
+                        // Build a closure that aliases document/query within the shadow root
+                        const bootstrap = new Function('root', `
+                            (function(){
+                                var document = root;
+                                var shadowRoot = root;
+                                var $ = function(sel){ return root.querySelector(sel); };
+                                var $$ = function(sel){ return root.querySelectorAll(sel); };
+                                try {
+                                    ${tp.script_js}
+                                } catch(e) { try { console.error('[FlexProtect] inline script error', e); } catch(_){} }
+                            })();
+                        `);
+                        bootstrap(container);
+                        fpLog('Inline offer script executed successfully in Shadow DOM');
+                    } catch (e) {
+                        fpLog('Failed to execute inline offer script in Shadow DOM:', e);
+                    }
+                }
+
+                // Fallback: bind selection on generic ".option" templates if template script didn't wire
+                try {
+                    if (!container.__fp_click_bound) {
+                        container.__fp_click_bound = true;
+                        container.addEventListener('click', (ev)=>{
+                            const opt = ev.target && ev.target.closest ? ev.target.closest('.option') : null;
+                            if (!opt || (container.contains && !container.contains(opt))) return;
+                            // visual classes
+                            try { container.querySelectorAll('.option').forEach(x=>{ x.classList && x.classList.remove('selected'); x.classList && x.classList.remove('popular'); }); } catch{}
+                            try { opt.classList && opt.classList.add('selected'); if (container.querySelectorAll('.option')[0] === opt) opt.classList.add('popular'); } catch{}
+                            // extract term and price from either data-fp-* or template markup
+                            let termRaw = opt.getAttribute('data-fp-term') || opt.getAttribute('data-term') || opt.getAttribute('data-option') || '';
+                            let priceRaw = opt.getAttribute('data-fp-price') || (opt.querySelector('.price, .option-price') && opt.querySelector('.price, .option-price').textContent) || '';
+                            // normalize values
+                            let term = Number(String(termRaw).replace(/[^0-9]/g,'') || 0);
+                            let price = Number(String(priceRaw).replace(/[^0-9.\-]/g,'') || 0);
+                            if (!term && /2y|2yr|2 years?/i.test(String(termRaw))) term = 2;
+                            if (!term && /3y|3yr|3 years?/i.test(String(termRaw))) term = 3;
+                            if (!term) return;
+                            if (!isFinite(price) || price <= 0) return;
+                            opt.dispatchEvent(new CustomEvent('fp:selection', { bubbles: true, composed: true, detail: { term, price } }));
+                        }, true);
+                    }
+                } catch {}
+                
+                // Listen for selection events from the inline offer (Shadow DOM)
+                document.addEventListener('fp:selection', async (ev) => {
+                    try {
+                        // Check if the event originated from our inline offer's Shadow DOM
+                        const shadowHost = container.host; // container is the ShadowRoot, so container.host is the host element
+                        const originatedInOurShadowDom = ev.composedPath().includes(shadowHost);
+
+                        if (!originatedInOurShadowDom) {
+                            return;
+                        }
+                        
+                        const det = ev.detail || {};
+                        const term = Number(det.term || 0);
+                        const priceSel = Number(det.price || 0);
+                        
+                        if (!term || !priceSel) return;
+                        
+                        // Update the selected state
+                        selected = true;
+                        selectedPlan = { term, price: priceSel };
+                        
+                        // Track the selection
+                        trackEvent('offer_select', { surface: 'product_page', term, price: priceSel });
+                        
+                        // Remove declined state
+                        try { localStorage.removeItem(declinedKey); } catch {}
+                        ensureDeclineNotice(false);
+                        
+                        fpLog('Inline offer selection:', { term, price: priceSel });
+                        
+                    } catch (e) {
+                        fpLog('Error handling inline offer selection:', e);
+                    }
+                }, true);
+
+                // Decline notice helper (shows a subtle red banner when declined)
+                const ensureDeclineNotice = (show) => {
+                  try {
+                    let n = container.querySelector('.fp-decline-notice');
+                    if (show) {
+                      if (!n) {
+                        n = document.createElement('div');
+                        n.className = 'fp-decline-notice';
+                        n.style.cssText = 'margin-top:8px;color:#b91c1c;background:#fee2e2;border:1px solid #fecaca;border-radius:6px;padding:8px 10px;font-size:12px;';
+                        n.textContent = "You chose to not add product protection to your purchase. If you've changed your mind, just select an option.";
+                        container.appendChild(n);
+                      } else {
+                        n.style.display = 'block';
+                      }
+                    } else {
+                      if (n) n.style.display = 'none';
+                    }
+                  } catch {}
+                };
+                // Show notice immediately if previously declined for this product
+                if (localStorage.getItem(declinedKey)) ensureDeclineNotice(true);
                 container.addEventListener('click', (ev) => {
-                  const termBtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-term]') : null;
+                  const termBtn = ev.target && ev.target.closest ? ev.target.closest('[data-fp-term]') : null;
                   if (termBtn && container.contains(termBtn)) {
                     const term = Number(termBtn.getAttribute('data-fp-term'));
                     const priceSel = Number(termBtn.getAttribute('data-fp-price'));
+                    // Toggle behavior: if already selected, de-select
+                    if (selected && selectedPlan && selectedPlan.term === term) {
+                      selected = false;
+                      selectedPlan = null;
+                      container.querySelectorAll('[data-fp-term]').forEach(b=>{ try { b.style.outline='none'; b.style.boxShadow='none'; b.style.borderColor=''; b.classList && b.classList.remove('active'); b.setAttribute && b.setAttribute('aria-pressed','false'); } catch {} });
+            return;
+        }
                     selectedPlan = { term, price: priceSel };
                     selected = true;
                     try { localStorage.removeItem(declinedKey); } catch {}
-                    // Visual selection
-                    container.querySelectorAll('button[data-fp-term]').forEach(b=>{ try { b.style.outline = 'none'; b.style.boxShadow = 'none'; } catch {} });
-                    try { termBtn.style.outline = `2px solid ${theme?.buttonColor || '#2563eb'}`; termBtn.style.boxShadow = '0 0 0 2px rgba(37,99,235,.15)'; } catch {}
+                    ensureDeclineNotice(false);
+                    // Visual selection with glow
+                    container.querySelectorAll('[data-fp-term]').forEach(b=>{ try { b.style.outline = 'none'; b.style.boxShadow = 'none'; b.style.borderColor=''; b.classList && b.classList.remove('active'); b.setAttribute && b.setAttribute('aria-pressed','false'); } catch {} });
+                    try {
+                      const c = theme?.buttonColor || '#2563eb';
+                      termBtn.style.borderColor = c; termBtn.style.boxShadow = '0 0 0 4px rgba(37,99,235,.25)';
+                      termBtn.classList && termBtn.classList.add('active'); termBtn.setAttribute && termBtn.setAttribute('aria-pressed','true');
+                    } catch {}
                     trackEvent('offer_select', { surface: 'product_page', term, price: priceSel });
                     return;
                   }
@@ -598,7 +1232,8 @@
                   if (declineBtn && container.contains(declineBtn)) {
                     trackEvent('offer_decline', { surface: 'product_page' });
                     localStorage.setItem(declinedKey, '1');
-                    // Keep the inline offer visible so merchant can change their mind; no modal will show due to declined flag
+                    // Keep the inline offer visible; show notice; no modal will show due to declined flag
+                    ensureDeclineNotice(true);
                     return;
                   }
                   const learnBtnPg = ev.target && ev.target.closest ? ev.target.closest('[data-fp-learn]') : null;
@@ -623,20 +1258,66 @@
                         window.__FP_ADD_BOTH = true;
                         await selectAndAddToCart(sessionToken, selectedPlan.price, selectedPlan.term, pj.id, parentGidForAdd, sessionHint);
                         window.__FP_ADD_BOTH = false;
-                        return;
-                      }
+            return;
+        }
                       // Only show modal if no plan is selected and not declined
                       if (placements.offer_modal && !localStorage.getItem(declinedKey) && !(selected && selectedPlan)) {
                         e.preventDefault();
                         const pricingData2 = pricingData || await getWarrantyPricing(productInfo, sessionToken);
                         if (!pricingData2) { form.submit(); return; }
-                        const html = createWarrantyOffer(productInfo, pricingData2, theme, templates['offer_modal'], placements.learn_more === true);
-                        const modal = document.createElement('div');
-                        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
-                        modal.innerHTML = `<div style=\"max-width:520px;width:90%;background:#fff;border-radius:8px;padding:12px;\">${html}</div>`;
-                        document.body.appendChild(modal);
-                        const mcontainer = modal.querySelector('.flex-warranty-offer');
+                        let html = '';
+                        const tm = templates['offer_modal'] || {};
+                        if (tm && typeof tm.html === 'string' && tm.html.trim().length > 0 && !isPlaceholderHtml(tm.html)) {
+                          html = tm.html;
+                          fpLog('Using server HTML for modal, length:', html.length);
+                        } else {
+                          html = (window.__FP_PREFETCH && window.__FP_PREFETCH.offer_modal) || createWarrantyOffer('offer_modal', productInfo, pricingData2, theme, templates['offer_modal'], placements.learn_more === true);
+                          fpLog('Using fallback HTML for modal, length:', html.length);
+                        }
+                        let modal = null; let mcontainer = null; let cleanup = () => { try { modal && modal.remove(); } catch {} };
+                        // Remove any existing modals before inserting new one
+                        removeExistingModals();
+                        
+                        if (typeof html === 'string' && html.indexOf('flexprotect-modal-container') !== -1) {
+                          fpLog('Inserting server modal HTML');
+                          const ins = insertServerModalShadow(html, tm.script_js);
+                          mcontainer = ins.mcontainer; cleanup = ins.cleanup;
+                          fpLog('Modal container found:', mcontainer);
+                          try { hydrateModalSelector(mcontainer, pricingData2); } catch {}
+                          // Ensure modal is visible and properly positioned
+                          if (mcontainer) {
+                            try {
+                              const overlay = mcontainer.querySelector('.modal-overlay');
+                              if (overlay) {
+                                overlay.style.zIndex = '2147483647';
+                                overlay.style.display = 'flex';
+                                overlay.style.position = 'fixed';
+                                overlay.style.inset = '0';
+                                fpLog('Modal overlay positioned');
+                              }
+                            } catch {}
+                          }
+                        } else {
+                          modal = document.createElement('div');
+                          modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:2147483647;';
+                          modal.innerHTML = `<div style=\"max-width:820px;width:95%;background:#fff;border-radius:12px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);\">${html}</div>`;
+                          document.body.appendChild(modal);
+                          mcontainer = modal.querySelector('.flex-warranty-offer');
+                        }
                         trackEvent('offer_view', { surface: 'offer_modal', price: productInfo.price, category_tag: productInfo.category_tag });
+                        try { const selRoot = mcontainer.querySelector('[data-fp-selector]'); if (selRoot) wireSelectorBehavior(selRoot); } catch {}
+                        try { wireServerModalClose(mcontainer, cleanup); } catch {}
+                        try {
+                          mcontainer.addEventListener('fp:selection', async (ev) => {
+                            const det = (ev && ev.detail) || {}; const term = Number(det.term || det.Term || 0); const priceSel = Number(det.price || det.Price || 0);
+                            if (!term || !priceSel) return;
+                            trackEvent('offer_select', { surface: 'offer_modal', term, price: priceSel });
+                            let currentVar2 = null; try { currentVar2 = form.querySelector('[name="id"]')?.value || null; } catch {}
+                            const parentGidForAdd2 = currentVar2 ? `gid://shopify/ProductVariant/${Number(currentVar2)}` : parentVariantGid;
+                            await selectAndAddToCart(sessionToken, priceSel, term, pj.id, parentGidForAdd2, sessionHint);
+                            cleanup();
+                          }, { once: false });
+                        } catch {}
                         mcontainer.addEventListener('click', async (ev) => {
                           const tbtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-term]') : null;
                           if (tbtn && mcontainer.contains(tbtn)) {
@@ -647,14 +1328,14 @@
                             try { currentVar2 = form.querySelector('[name="id"]')?.value || null; } catch {}
                             const parentGidForAdd2 = currentVar2 ? `gid://shopify/ProductVariant/${Number(currentVar2)}` : parentVariantGid;
                             await selectAndAddToCart(sessionToken, priceSel, term, pj.id, parentGidForAdd2, sessionHint);
-                            modal.remove();
+                            cleanup();
                             return;
                           }
                           const dbtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-decline]') : null;
                           if (dbtn && mcontainer.contains(dbtn)) {
                             trackEvent('offer_decline', { surface: 'offer_modal' });
                             localStorage.setItem(declinedKey, '1');
-                            modal.remove();
+                            cleanup();
                             form.submit();
             return;
         }
@@ -696,13 +1377,42 @@
                           const isTarget = (this === form) || this.matches('form[action*="/cart/add"], form[action="/cart/add"], [data-product-form] form');
                           if (isTarget && placements.offer_modal && !localStorage.getItem(declinedKey) && !(selected && selectedPlan)) {
                             if (pricingData) {
-                              const html = createWarrantyOffer(productInfo, pricingData, theme, templates['offer_modal']);
-                              const modal = document.createElement('div');
-                              modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
-                              modal.innerHTML = `<div style=\"max-width:520px;width:90%;background:#fff;border-radius:8px;padding:12px;\">${html}</div>`;
-                              document.body.appendChild(modal);
-                              const mcontainer = modal.querySelector('.flex-warranty-offer');
+                              let html = '';
+                              const tm = templates['offer_modal'] || {};
+                              if (tm && typeof tm.html === 'string' && tm.html.trim().length > 0 && !isPlaceholderHtml(tm.html)) {
+                                html = tm.html;
+                              } else {
+                                html = (window.__FP_PREFETCH && window.__FP_PREFETCH.offer_modal) || createWarrantyOffer('offer_modal', productInfo, pricingData, theme, templates['offer_modal']);
+                              }
+                              let modal = null; let mcontainer = null; let cleanup = () => { try { modal && modal.remove(); } catch {} };
+                              // Remove any existing modals before inserting new one
+                              removeExistingModals();
+                              
+                              if (typeof html === 'string' && html.indexOf('flexprotect-modal-container') !== -1) {
+                                const ins = insertServerModalShadow(html, tm.script_js);
+                                mcontainer = ins.mcontainer; cleanup = ins.cleanup;
+                                try { hydrateModalSelector(mcontainer, pricingData); } catch {}
+                                // Ensure modal is visible without fallback logic
+                                ensureModalVisibleOrFallback(mcontainer, html);
+                              } else {
+                                modal = document.createElement('div');
+                                modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;';
+                                modal.innerHTML = `<div style=\"max-width:820px;width:95%;background:#fff;border-radius:12px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);\">${html}</div>`;
+                                document.body.appendChild(modal);
+                                mcontainer = modal.querySelector('.flex-warranty-offer');
+                              }
                               trackEvent('offer_view', { surface: 'offer_modal', price: productInfo.price, category_tag: productInfo.category_tag });
+                              try { const selRoot = mcontainer.querySelector('[data-fp-selector]'); if (selRoot) wireSelectorBehavior(selRoot); } catch {}
+                              try { wireServerModalClose(mcontainer, cleanup); } catch {}
+                              try { mcontainer.addEventListener('fp:selection', async (ev) => {
+                                  const det = (ev && ev.detail) || {}; const term = Number(det.term || det.Term || 0); const priceSel = Number(det.price || det.Price || 0);
+                                  if (!term || !priceSel) return;
+                                  trackEvent('offer_select', { surface: 'offer_modal', term, price: priceSel });
+                                  let currentVar2 = null; try { currentVar2 = form.querySelector('[name="id"]')?.value || null; } catch {}
+                                  const parentGidForAdd2 = currentVar2 ? `gid://shopify/ProductVariant/${Number(currentVar2)}` : parentVariantGid;
+                                  await selectAndAddToCart(sessionToken, priceSel, term, pj.id, parentGidForAdd2, sessionHint);
+                                  cleanup();
+                                }, { once: false }); } catch {}
                               mcontainer.addEventListener('click', async (ev) => {
                                 const tbtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-term]') : null;
                                 if (tbtn && mcontainer.contains(tbtn)) {
@@ -713,14 +1423,14 @@
                                   try { currentVar2 = form.querySelector('[name="id"]')?.value || null; } catch {}
                                   const parentGidForAdd2 = currentVar2 ? `gid://shopify/ProductVariant/${Number(currentVar2)}` : parentVariantGid;
                                   await selectAndAddToCart(sessionToken, priceSel, term, pj.id, parentGidForAdd2, sessionHint);
-                                  modal.remove();
+                                  cleanup();
                                   return;
                                 }
                                 const dbtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-decline]') : null;
                                 if (dbtn && mcontainer.contains(dbtn)) {
                                   trackEvent('offer_decline', { surface: 'offer_modal' });
                                   localStorage.setItem(declinedKey, '1');
-                                  modal.remove();
+                                  cleanup();
                                   try { origSubmit.call(form); } catch {}
                                   return;
                                 }
@@ -770,13 +1480,42 @@
                             } else if (placements.offer_modal && !localStorage.getItem(declinedKey) && !(selected && selectedPlan)) {
                               // Case B: no plan selected and not declined -> prompt with Offer Modal post-add
                               try {
-                                const html = createWarrantyOffer(productInfo, pricingData || (await getWarrantyPricing(productInfo, sessionToken)), theme, templates['offer_modal']);
-                                const modal = document.createElement('div');
-                                modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
-                                modal.innerHTML = `<div style=\"max-width:520px;width:90%;background:#fff;border-radius:8px;padding:12px;\">${html}</div>`;
-                                document.body.appendChild(modal);
-                                const mcontainer = modal.querySelector('.flex-warranty-offer');
+                                let html = '';
+                                const tm = templates['offer_modal'] || {};
+                                if (tm && typeof tm.html === 'string' && tm.html.trim().length > 0 && !isPlaceholderHtml(tm.html)) {
+                                  html = tm.html;
+        } else {
+                                  html = (window.__FP_PREFETCH && window.__FP_PREFETCH.offer_modal) || createWarrantyOffer('offer_modal', productInfo, pricingData || (await getWarrantyPricing(productInfo, sessionToken)), theme, templates['offer_modal']);
+                                }
+                                let modal = null; let mcontainer = null; let cleanup = () => { try { modal && modal.remove(); } catch {} };
+                                // Remove any existing modals before inserting new one
+                                removeExistingModals();
+                                
+                                if (typeof html === 'string' && html.indexOf('flexprotect-modal-container') !== -1) {
+                                  const ins = insertServerModalShadow(html, tm.script_js);
+                                  mcontainer = ins.mcontainer; cleanup = ins.cleanup;
+                                  try { hydrateModalSelector(mcontainer, pricingData || (await getWarrantyPricing(productInfo, sessionToken))); } catch {}
+                                  // Ensure modal is visible without fallback logic
+                                  ensureModalVisibleOrFallback(mcontainer, html);
+                                } else {
+                                  modal = document.createElement('div');
+                                  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;';
+                                  modal.innerHTML = `<div style=\"max-width:820px;width:95%;background:#fff;border-radius:12px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);\">${html}</div>`;
+                                  document.body.appendChild(modal);
+                                  mcontainer = modal.querySelector('.flex-warranty-offer');
+                                }
                                 trackEvent('offer_view', { surface: 'offer_modal', price: productInfo.price, category_tag: productInfo.category_tag });
+                                try { const selRoot = mcontainer.querySelector('[data-fp-selector]'); if (selRoot) wireSelectorBehavior(selRoot); } catch {}
+                                try { wireServerModalClose(mcontainer, cleanup); } catch {}
+                                try { mcontainer.addEventListener('fp:selection', async (ev) => {
+                                    const det = (ev && ev.detail) || {}; const term = Number(det.term || det.Term || 0); const priceSel = Number(det.price || det.Price || 0);
+                                    if (!term || !priceSel) return;
+                                    trackEvent('offer_select', { surface: 'offer_modal', term, price: priceSel });
+                                    let currentVar4 = null; try { currentVar4 = document.querySelector('[data-product-form] form [name="id"], form[action*="/cart/add"] [name="id"], form[action="/cart/add"] [name="id"]').value || null; } catch {}
+                                    const parentGidForAdd4 = currentVar4 ? `gid://shopify/ProductVariant/${Number(currentVar4)}` : parentVariantGid;
+                                    await selectAndAddToCart(sessionToken, priceSel, term, pj.id, parentGidForAdd4, sessionHint);
+                                    cleanup();
+                                  }, { once: false }); } catch {}
                                 mcontainer.addEventListener('click', async (ev) => {
                                   const tbtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-term]') : null;
                                   if (tbtn && mcontainer.contains(tbtn)) {
@@ -787,14 +1526,14 @@
                                     try { currentVar4 = document.querySelector('[data-product-form] form [name="id"], form[action*="/cart/add"] [name="id"], form[action="/cart/add"] [name="id"]').value || null; } catch {}
                                     const parentGidForAdd4 = currentVar4 ? `gid://shopify/ProductVariant/${Number(currentVar4)}` : parentVariantGid;
                                     await selectAndAddToCart(sessionToken, priceSel, term, pj.id, parentGidForAdd4, sessionHint);
-                                    modal.remove();
+                                    cleanup();
                                     return;
                                   }
                                   const dbtn = ev.target && ev.target.closest ? ev.target.closest('button[data-fp-decline]') : null;
                                   if (dbtn && mcontainer.contains(dbtn)) {
                                     trackEvent('offer_decline', { surface: 'offer_modal' });
                                     localStorage.setItem(declinedKey, '1');
-                                    modal.remove();
+                                    cleanup();
                                     return;
                                   }
                                   const lbtn = ev.target && ev.target.closest ? ev.target.closest('[data-fp-learn]') : null;
@@ -842,10 +1581,10 @@
                         e.preventDefault();
                         const pricingData = await getWarrantyPricing(productInfo, sessionToken);
                         if (!pricingData) return form.submit();
-                        const html = createWarrantyOffer(productInfo, pricingData, theme, templates['offer_modal'], placements.learn_more === true);
+                        const html = createWarrantyOffer('offer_modal', productInfo, pricingData, theme, templates['offer_modal'], placements.learn_more === true);
                         const modal = document.createElement('div');
-                        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
-                        modal.innerHTML = `<div style="max-width:520px;width:90%;background:#fff;border-radius:8px;padding:12px;">${html}</div>`;
+                        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;';
+                        modal.innerHTML = `<div style="max-width:820px;width:95%;background:#fff;border-radius:12px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);">${html}</div>`;
                         document.body.appendChild(modal);
                         const container = modal.querySelector('.flex-warranty-offer');
                         trackEvent('offer_view', { surface: 'offer_modal', price: productInfo.price, category_tag: productInfo.category_tag });
@@ -922,8 +1661,14 @@
         injectStyles();
         // Always attach cart watchers, even if not on a product page
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => { try { hookCartWatchers(); } catch {} });
-        } else { try { hookCartWatchers(); } catch {} }
+            document.addEventListener('DOMContentLoaded', () => { 
+                try { hookCartWatchers(); } catch {} 
+                try { handleWarrantyProductPage(); } catch {}
+            });
+        } else { 
+            try { hookCartWatchers(); } catch {} 
+            try { handleWarrantyProductPage(); } catch {}
+        }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initWarrantyOffer);
     } else {

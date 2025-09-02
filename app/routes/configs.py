@@ -14,7 +14,7 @@ def list_configs():
     with get_db() as db:
         rows = db.execute(text('''
             SELECT c.id, c.shop_id, c.template_id, c.theme_id, c.enabled, c.sort_order, c.display, c.created_at, c.updated_at,
-                   t.type, t.name AS template_name,
+                   lower(t.type::text) AS type, t.name AS template_name,
                    th.name AS theme_name
             FROM offer_configs c
             JOIN offer_templates t ON t.id = c.template_id
@@ -34,6 +34,27 @@ def upsert_configs():
     try:
         with get_db() as db:
             for it in items:
+                # Resolve template id by type if not explicitly provided
+                tid = it.get('template_id') or it.get('id')
+                if not tid and it.get('type'):
+                    # Look up the effective template for this type (shop override if present, else global)
+                    row = db.execute(text('''
+                        with ranked as (
+                          select t.*,
+                                 row_number() over (
+                                   partition by t.type
+                                   order by (t.shop_id = :sid) desc, t.updated_at desc, t.id desc
+                                 ) rn
+                          from offer_templates t
+                          where t.is_active = true
+                            and lower(t.type::text) = lower(:t)
+                            and t.shop_id in (0, :sid)
+                        )
+                        select id from ranked where rn = 1
+                    '''), { 'sid': ctx['shop_id'], 't': str(it.get('type')) }).mappings().first()
+                    if row:
+                        tid = row['id']
+
                 db.execute(text('''
                     INSERT INTO offer_configs (shop_id, template_id, theme_id, enabled, sort_order, display)
                     VALUES (:sid, :tid, :thid, :enabled, :sort, CAST(:display AS JSONB))
@@ -45,7 +66,7 @@ def upsert_configs():
                         updated_at = now()
                 '''), {
                     'sid': ctx['shop_id'],
-                    'tid': it.get('template_id') or it.get('id'),
+                    'tid': tid,
                     'thid': it.get('theme_id'),
                     'enabled': bool(it.get('enabled', True)),
                     'sort': int(it.get('sort_order', 0)),
